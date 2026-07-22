@@ -3,10 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Mail, Lock, ArrowRight, AlertCircle, Sparkles } from 'lucide-react';
+import { Mail, Lock, ArrowRight, AlertCircle, Shield, Briefcase, UserCheck } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { signIn, isDemo } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -34,10 +34,10 @@ export const Login: React.FC = () => {
     }
   };
 
-  const handleQuickDemo = async () => {
+  const handleRoleLogin = async (demoEmail: string, role: string) => {
     setIsLoading(true);
     setError(null);
-    await signIn('alex.morgan@taskflow.io', 'demo123456');
+    await signIn(demoEmail, 'demo123456', role);
     setIsLoading(false);
     navigate('/dashboard');
   };
@@ -49,7 +49,7 @@ export const Login: React.FC = () => {
           Welcome back
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Enter your credentials to access your workspace
+          Sign in to your TaskFlow enterprise workspace
         </p>
       </div>
 
@@ -64,7 +64,7 @@ export const Login: React.FC = () => {
         <Input
           label="Email Address"
           type="email"
-          placeholder="alex.morgan@taskflow.io"
+          placeholder="marcus.vance@taskflow.io"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           leftIcon={<Mail className="w-4 h-4" />}
@@ -106,21 +106,35 @@ export const Login: React.FC = () => {
         </Button>
       </form>
 
-      {/* Demo helper card */}
+      {/* Role Quick Login Buttons */}
       <div className="pt-4 border-t border-slate-100 text-center space-y-3">
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>Testing without Supabase keys?</span>
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+          One-Click Demo Role Accounts
+        </span>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs bg-purple-50/50 hover:bg-purple-100 text-purple-800 border-purple-200/80 font-semibold"
+            onClick={() => handleRoleLogin('marcus.vance@taskflow.io', 'Manager')}
+            isLoading={isLoading}
+            leftIcon={<Briefcase className="w-3.5 h-3.5 text-purple-600" />}
+          >
+            👔 Manager Account
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs bg-blue-50/50 hover:bg-blue-100 text-brand-800 border-brand-200/80 font-semibold"
+            onClick={() => handleRoleLogin('alex.morgan@taskflow.io', 'Member')}
+            isLoading={isLoading}
+            leftIcon={<UserCheck className="w-3.5 h-3.5 text-brand-600" />}
+          >
+            🧑‍💻 Member Account
+          </Button>
         </div>
-        <Button
-          variant="secondary"
-          size="md"
-          className="w-full text-xs font-semibold bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200/80"
-          onClick={handleQuickDemo}
-          isLoading={isLoading}
-          leftIcon={<Sparkles className="w-3.5 h-3.5 text-brand-600" />}
-        >
-          Instant Demo Login (One-Click)
-        </Button>
       </div>
     </div>
   );

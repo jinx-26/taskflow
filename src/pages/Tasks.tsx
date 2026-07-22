@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
+import { CreateTaskModal } from '../components/common/CreateTaskModal';
 import { CheckSquare, Plus, Search, Filter, Clock, AlertCircle } from 'lucide-react';
 import { TaskPlaceholder } from '../types';
 
@@ -51,6 +52,13 @@ const mockTasks: TaskPlaceholder[] = [
 ];
 
 export const Tasks: React.FC = () => {
+  const [taskList, setTaskList] = useState<TaskPlaceholder[]>(mockTasks);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  const handleTaskCreated = (newTask: any) => {
+    setTaskList((prev) => [newTask, ...prev]);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200">
       {/* Header */}
@@ -61,7 +69,7 @@ export const Tasks: React.FC = () => {
               Workspace
             </span>
             <span className="text-slate-300">•</span>
-            <span className="text-xs font-semibold text-brand-600">48 Total Tasks</span>
+            <span className="text-xs font-semibold text-brand-600">{taskList.length} Tasks</span>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-1">
             <CheckSquare className="w-6 h-6 text-brand-600" />
@@ -75,6 +83,7 @@ export const Tasks: React.FC = () => {
             size="md"
             className="shadow-soft font-semibold text-xs"
             leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setCreateModalOpen(true)}
           >
             Create Task
           </Button>
@@ -113,7 +122,7 @@ export const Tasks: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {mockTasks.map((task) => (
+                {taskList.map((task) => (
                   <tr key={task.id} className="hover:bg-slate-50 transition-colors cursor-pointer">
                     <td className="py-3.5 px-4 font-mono font-bold text-brand-600">
                       {task.code}
@@ -157,8 +166,8 @@ export const Tasks: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-2">
-                        <Avatar src={task.assignee.avatar} name={task.assignee.name} size="xs" />
-                        <span className="text-slate-700">{task.assignee.name}</span>
+                        <Avatar src={task.assignee?.avatar} name={task.assignee?.name} size="xs" />
+                        <span className="text-slate-700">{task.assignee?.name}</span>
                       </div>
                     </td>
                     <td className="py-3.5 px-4 text-right text-slate-500">
@@ -171,6 +180,12 @@ export const Tasks: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <CreateTaskModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onTaskCreated={handleTaskCreated}
+      />
     </div>
   );
 };

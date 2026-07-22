@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { CreateTaskModal } from './CreateTaskModal';
 import {
   Menu,
   Search,
@@ -12,6 +13,7 @@ import {
   ShieldCheck,
   ChevronDown,
   Layers,
+  Plus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -28,6 +30,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   const navigate = useNavigate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,6 +55,8 @@ export const TopNav: React.FC<TopNavProps> = ({
     'Team Member';
   const userEmail = user?.email || 'user@taskflow.io';
   const userAvatar = user?.user_metadata?.avatar_url;
+
+  const userRole = user?.user_metadata?.role || 'Member';
 
   return (
     <header className="sticky top-0 z-20 h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
@@ -91,8 +96,32 @@ export const TopNav: React.FC<TopNavProps> = ({
 
       {/* Right section: Actions & User Menu */}
       <div className="flex items-center gap-2 md:gap-3" ref={menuRef}>
+        {/* User Role Badge */}
+        <span
+          className={`hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+            userRole === 'Manager'
+              ? 'bg-purple-50 text-purple-700 border-purple-200'
+              : userRole === 'Admin' || userRole === 'Owner'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-brand-50 text-brand-700 border-brand-200'
+          }`}
+        >
+          {userRole === 'Manager' ? '👔 Manager' : userRole === 'Admin' ? '👑 Admin' : '🧑‍💻 Member'}
+        </span>
+
+        {/* Quick Assign Task Button */}
+        <Button
+          variant="primary"
+          size="sm"
+          className="hidden md:inline-flex text-xs font-semibold shadow-soft"
+          leftIcon={<Plus className="w-3.5 h-3.5" />}
+          onClick={() => setCreateModalOpen(true)}
+        >
+          New Task
+        </Button>
+
         {isDemo && (
-          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-200/80">
+          <span className="hidden lg:inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200/80">
             <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
             Demo Mode Active
           </span>
@@ -172,9 +201,14 @@ export const TopNav: React.FC<TopNavProps> = ({
           {userMenuOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-soft-lg border border-slate-200/80 py-2 z-50 animate-in fade-in-50 duration-150">
               <div className="px-4 py-2.5 border-b border-slate-100">
-                <p className="text-xs font-bold text-slate-900 truncate">
-                  {userDisplayName}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-900 truncate">
+                    {userDisplayName}
+                  </p>
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                    {userRole}
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-500 truncate">{userEmail}</p>
               </div>
 
@@ -225,6 +259,11 @@ export const TopNav: React.FC<TopNavProps> = ({
           Logout
         </Button>
       </div>
+
+      <CreateTaskModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+      />
     </header>
   );
 };

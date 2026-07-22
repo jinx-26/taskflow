@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
+import { CreateTaskModal } from '../components/common/CreateTaskModal';
 import {
   FolderKanban,
   CheckCircle2,
@@ -155,6 +156,7 @@ const recentActivity: ActivityItem[] = [
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Team Lead';
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200">
@@ -191,6 +193,7 @@ export const Dashboard: React.FC = () => {
               size="md"
               className="bg-brand-500 hover:bg-brand-600 text-white font-semibold text-xs shadow-soft"
               leftIcon={<Plus className="w-4 h-4" />}
+              onClick={() => setCreateModalOpen(true)}
             >
               New Task
             </Button>
@@ -482,6 +485,11 @@ export const Dashboard: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <CreateTaskModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+      />
     </div>
   );
 };

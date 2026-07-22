@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password?: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password?: string, role?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null; message?: string }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setUser((currentSession?.user as User) || null);
           }
         } catch (err) {
-          console.warn('Supabase auth getSession warning, falling back to local state:', err);
+          console.warn('Supabase getSession warning, falling back:', err);
         }
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -63,7 +63,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           subscription.unsubscribe();
         };
       } else {
-        // Fallback demo mode persistence
         const storedDemoUser = localStorage.getItem(DEMO_USER_KEY);
         if (storedDemoUser) {
           try {
@@ -90,7 +89,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
-  const signIn = async (email: string, password?: string): Promise<{ error: Error | null }> => {
+  const signIn = async (email: string, password?: string, role?: string): Promise<{ error: Error | null }> => {
     setLoading(true);
 
     if (isSupabaseConfigured && password) {
@@ -99,14 +98,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { error };
     }
 
-    // Demo Mode Sign In
+    // Role-based demo credentials
+    const isManager = email.includes('manager');
+    const isAdmin = email.includes('admin');
+    const userRole = role || (isManager ? 'Manager' : isAdmin ? 'Admin' : 'Member');
+    const userName = isManager ? 'Marcus Vance' : isAdmin ? 'Elena Rostova' : 'Alex Morgan';
+    const userAvatar = isManager
+      ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
+      : isAdmin
+      ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
+      : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150';
+
     const demoUser: User = {
-      id: 'demo-user-123',
-      email: email || 'alex.morgan@taskflow.io',
+      id: isManager ? 'demo-manager-456' : isAdmin ? 'demo-admin-789' : 'demo-member-123',
+      email: email || (isManager ? 'marcus.vance@taskflow.io' : 'alex.morgan@taskflow.io'),
       user_metadata: {
-        full_name: 'Alex Morgan',
-        avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-        role: 'Senior Product Manager',
+        full_name: userName,
+        avatar_url: userAvatar,
+        role: userRole,
       },
     };
 
