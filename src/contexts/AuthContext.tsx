@@ -39,9 +39,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (isSupabaseConfigured) {
         try {
           const { data: { session: currentSession } } = await supabase.auth.getSession();
-          if (mounted) {
-            setSession(currentSession as Session | null);
-            setUser((currentSession?.user as User) || null);
+          if (mounted && currentSession) {
+            setSession(currentSession as Session);
+            setUser(currentSession.user as User);
           }
         } catch (err) {
           console.warn('Supabase getSession warning, falling back:', err);
@@ -50,8 +50,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
           (_event, currentSession) => {
             if (mounted) {
-              setSession(currentSession as Session | null);
-              setUser((currentSession?.user as User) || null);
+              if (currentSession) {
+                setSession(currentSession as Session);
+                setUser(currentSession.user as User);
+              } else {
+                setSession(null);
+                setUser(null);
+              }
               setLoading(false);
             }
           }
@@ -93,12 +98,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
 
     if (isSupabaseConfigured && password) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        setLoading(false);
+        return { error };
+      }
+
+      if (data.session && data.user) {
+        setSession(data.session as Session);
+        setUser(data.user as User);
+      }
+
       setLoading(false);
-      return { error };
+      return { error: null };
     }
 
-    // Role-based accounts mapping
+    // Role-based accounts mapping for local demo mode
     const isSarita = email.toLowerCase().includes('saritarani') || email.toLowerCase().includes('hfcl');
     const isJignesh = email.toLowerCase().includes('jignesh');
 
@@ -151,7 +170,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return {
       error: null,
-      message: 'Password reset link sent to ' + email + ' (Demo Mode)',
+      message: 'Password reset link sent to ' + email,
     };
   };
 

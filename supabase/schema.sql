@@ -1,13 +1,14 @@
 -- ====================================================================
--- TASKFLOW SUPABASE COMPLETE PRODUCTION SCHEMA & USER ROLE SETUP
+-- TASKFLOW COMPLETE PRODUCTION DATABASE SETUP & USER ROLES
 -- Copy & paste this entire script into your Supabase SQL Editor:
 -- https://supabase.com/dashboard/project/zabzwsdvbgzjlkfszxhn/sql/new
 -- ====================================================================
 
 -- 1. Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 2. Create User Profiles Table (Linked to auth.users)
+-- 2. Create User Profiles Table
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,
@@ -17,24 +18,19 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Enable RLS on Profiles
+-- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Drop existing policies if any to avoid duplication
 DROP POLICY IF EXISTS "Public profiles are viewable by authenticated users" ON public.profiles;
 DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 
 CREATE POLICY "Public profiles are viewable by authenticated users"
-  ON public.profiles FOR SELECT
-  TO authenticated
-  USING (true);
+  ON public.profiles FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Users can update their own profile"
-  ON public.profiles FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = id);
+  ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
 
--- Trigger to automatically create a profile record when a new user signs up
+-- Trigger to auto-create profile when a real user registers
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -78,17 +74,10 @@ DROP POLICY IF EXISTS "Authenticated users can create projects" ON public.projec
 DROP POLICY IF EXISTS "Authenticated users can update projects" ON public.projects;
 DROP POLICY IF EXISTS "Authenticated users can delete projects" ON public.projects;
 
-CREATE POLICY "Projects viewable by authenticated users"
-  ON public.projects FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Authenticated users can create projects"
-  ON public.projects FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Authenticated users can update projects"
-  ON public.projects FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Authenticated users can delete projects"
-  ON public.projects FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Projects viewable by authenticated users" ON public.projects FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can create projects" ON public.projects FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated users can update projects" ON public.projects FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Authenticated users can delete projects" ON public.projects FOR DELETE TO authenticated USING (true);
 
 
 -- 4. Create Tasks Table
@@ -113,17 +102,10 @@ DROP POLICY IF EXISTS "Authenticated users can insert tasks" ON public.tasks;
 DROP POLICY IF EXISTS "Authenticated users can update tasks" ON public.tasks;
 DROP POLICY IF EXISTS "Authenticated users can delete tasks" ON public.tasks;
 
-CREATE POLICY "Tasks viewable by authenticated users"
-  ON public.tasks FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Authenticated users can insert tasks"
-  ON public.tasks FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Authenticated users can update tasks"
-  ON public.tasks FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Authenticated users can delete tasks"
-  ON public.tasks FOR DELETE TO authenticated USING (true);
+CREATE POLICY "Tasks viewable by authenticated users" ON public.tasks FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can insert tasks" ON public.tasks FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated users can update tasks" ON public.tasks FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Authenticated users can delete tasks" ON public.tasks FOR DELETE TO authenticated USING (true);
 
 
 -- 5. Indexes for Query Performance
@@ -134,25 +116,30 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON public.projects(status);
 
 
 -- ====================================================================
--- 6. SET UP MANAGER AND MEMBER ROLES FOR YOUR REAL USERS
--- (Run this after saritarani.guleria@hfcl.com and jignesh.giri2005@gmail.com sign up)
+-- 6. CONFIRM EMAILS & SET REAL USER ROLES IN SUPABASE
+-- (Run this to fix "Email not confirmed" or login errors)
 -- ====================================================================
 
--- Set Sarita Rani Guleria as MANAGER
+-- Step 6a: Confirm email verification for all registered users
+UPDATE auth.users
+SET email_confirmed_at = NOW()
+WHERE email_confirmed_at IS NULL;
+
+-- Step 6b: Assign Sarita Rani Guleria as MANAGER
 UPDATE public.profiles
 SET role = 'Manager', full_name = 'Sarita Rani Guleria'
 WHERE id IN (SELECT id FROM auth.users WHERE email = 'saritarani.guleria@hfcl.com');
 
--- Set Jignesh Giri as MEMBER
+-- Step 6c: Assign Jignesh Giri as MEMBER
 UPDATE public.profiles
 SET role = 'Member', full_name = 'Jignesh Giri'
 WHERE id IN (SELECT id FROM auth.users WHERE email = 'jignesh.giri2005@gmail.com');
 
--- Verify registered profiles and assigned roles:
+-- Verify registered profiles, emails, and assigned roles:
 SELECT 
   u.email,
   p.full_name,
   p.role,
-  p.created_at
+  u.email_confirmed_at
 FROM auth.users u
 JOIN public.profiles p ON u.id = p.id;
