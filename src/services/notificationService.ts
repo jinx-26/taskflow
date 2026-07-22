@@ -15,50 +15,79 @@ export interface NotificationItem {
 
 const LOCAL_STORAGE_KEY = 'taskflow_live_notifications';
 
+const DEFAULT_WELCOME_NOTIF: NotificationItem = {
+  id: 'notif-welcome-001',
+  recipientEmail: 'all',
+  senderName: 'TaskFlow Workspace',
+  senderAvatar: '',
+  title: 'Workspace Notifications Active',
+  message: 'Notifications will update in real-time as tasks are assigned, updated, or completed.',
+  taskCode: 'SYS-101',
+  type: 'announcement',
+  isRead: false,
+  time: 'Just now',
+};
+
 export async function fetchLiveNotifications(userEmail: string): Promise<NotificationItem[]> {
-  if (!userEmail) return [];
+  const cleanEmail = (userEmail || '').toLowerCase().trim();
+  const emailPrefix = cleanEmail.split('@')[0];
 
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .or(`recipient_email.eq.${userEmail.toLowerCase()},recipient_email.eq.all`)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        return data.map((n: any) => ({
-          id: n.id,
-          recipientEmail: n.recipient_email,
-          senderName: n.sender_name || 'System',
-          senderAvatar: n.sender_avatar,
-          title: n.title,
-          message: n.message,
-          taskCode: n.task_code,
-          type: n.type || 'assignment',
-          isRead: n.is_read || false,
-          time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
-        }));
+      if (!error && data && data.length > 0) {
+        const userNotifs = data.filter((n: any) => {
+          const rec = (n.recipient_email || '').toLowerCase();
+          return (
+            rec === 'all' ||
+            rec === cleanEmail ||
+            (emailPrefix && rec.includes(emailPrefix.substring(0, 5)))
+          );
+        });
+
+        if (userNotifs.length > 0) {
+          return userNotifs.map((n: any) => ({
+            id: n.id,
+            recipientEmail: n.recipient_email,
+            senderName: n.sender_name || 'System',
+            senderAvatar: n.sender_avatar,
+            title: n.title,
+            message: n.message,
+            taskCode: n.task_code,
+            type: n.type || 'assignment',
+            isRead: n.is_read || false,
+            time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+          }));
+        }
       }
     } catch (err) {
-      console.warn('Supabase fetch notifications error:', err);
+      console.warn('Supabase fetch notifications warning:', err);
     }
   }
 
-  // Fallback storage
+  // Fallback local storage
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (stored) {
     try {
       const parsed: NotificationItem[] = JSON.parse(stored);
-      return parsed.filter(
-        (n) => n.recipientEmail.toLowerCase() === userEmail.toLowerCase() || n.recipientEmail === 'all'
-      );
-    } catch (e) {
-      return [];
-    }
+      const filtered = parsed.filter((n) => {
+        const rec = (n.recipientEmail || '').toLowerCase();
+        return (
+          rec === 'all' ||
+          rec === cleanEmail ||
+          (emailPrefix && rec.includes(emailPrefix.substring(0, 5)))
+        );
+      });
+
+      if (filtered.length > 0) return filtered;
+    } catch (e) {}
   }
 
-  return [];
+  return [DEFAULT_WELCOME_NOTIF];
 }
 
 export async function sendNotification(notif: {
@@ -98,7 +127,7 @@ export async function sendNotification(notif: {
         },
       ]);
     } catch (err) {
-      console.warn('Supabase send notification error:', err);
+      console.warn('Supabase send notification notice:', err);
     }
   }
 
@@ -119,14 +148,16 @@ export async function sendNotification(notif: {
 }
 
 export async function markAllAsRead(userEmail: string): Promise<boolean> {
+  const cleanEmail = (userEmail || '').toLowerCase().trim();
+
   if (isSupabaseConfigured) {
     try {
       await supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('recipient_email', userEmail.toLowerCase());
+        .or(`recipient_email.eq.${cleanEmail},recipient_email.eq.all`);
     } catch (err) {
-      console.warn('Supabase mark all read error:', err);
+      console.warn('Supabase mark all read warning:', err);
     }
   }
 
@@ -134,9 +165,7 @@ export async function markAllAsRead(userEmail: string): Promise<boolean> {
   if (stored) {
     try {
       const list: NotificationItem[] = JSON.parse(stored);
-      const updated = list.map((n) =>
-        n.recipientEmail.toLowerCase() === userEmail.toLowerCase() ? { ...n, isRead: true } : n
-      );
+      const updated = list.map((n) => ({ ...n, isRead: true }));
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {}
   }
