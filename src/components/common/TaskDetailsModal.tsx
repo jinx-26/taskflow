@@ -8,6 +8,7 @@ import { TaskPlaceholder } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { formatDisplayDate } from '../../services/taskService';
+import { sendNotification } from '../../services/notificationService';
 
 interface CommentItem {
   id: string;
@@ -109,6 +110,22 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
       onTaskUpdated(updatedTask);
     }
 
+    if (newStatus === 'Done') {
+      try {
+        const creatorEmail = (task as any).createdBy?.includes('Sarita') ? 'saritarani.guleria@hfcl.com' : 'jignesh.giri2005@gmail.com';
+        const senderName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Team Member';
+        await sendNotification({
+          recipientEmail: creatorEmail,
+          senderName,
+          senderAvatar: user?.user_metadata?.avatar_url,
+          title: `Task Completed: ${task.code}`,
+          message: `Task "${task.title}" was marked complete by ${senderName}.`,
+          taskCode: task.code,
+          type: 'completion',
+        });
+      } catch (e) {}
+    }
+
     setTimeout(() => setSuccessMsg(''), 2000);
   };
 
@@ -160,6 +177,19 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
         console.warn('Supabase comment sync error:', err);
       }
     }
+
+    try {
+      const recipientEmail = user?.email?.includes('sarita') ? 'jignesh.giri2005@gmail.com' : 'saritarani.guleria@hfcl.com';
+      await sendNotification({
+        recipientEmail,
+        senderName: commentObj.author,
+        senderAvatar: commentObj.avatar,
+        title: `New Comment on ${task.code}`,
+        message: `"${newComment.trim()}"`,
+        taskCode: task.code,
+        type: 'comment',
+      });
+    } catch (e) {}
 
     localStorage.setItem(`taskflow_comments_${task.id}`, JSON.stringify(updated));
     setNewComment('');

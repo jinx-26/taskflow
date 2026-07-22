@@ -4,6 +4,7 @@ import { Input } from '../ui/Input';
 import { X, CheckSquare, User, Calendar, Tag, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { sendNotification } from '../../services/notificationService';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
     const selectedAssignee = teamMembersList.find(m => m.name === assigneeName) || {
       name: assigneeName,
+      email: assigneeName.includes('Jignesh') ? 'jignesh.giri2005@gmail.com' : 'saritarani.guleria@hfcl.com',
       avatar: undefined,
     };
 
@@ -81,6 +83,22 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       } catch (err) {
         console.warn('Supabase task insert notice:', err);
       }
+    }
+
+    // Trigger Notification to Assigned Member
+    try {
+      const recipientEmail = selectedAssignee.email || (selectedAssignee.name.includes('Jignesh') ? 'jignesh.giri2005@gmail.com' : 'saritarani.guleria@hfcl.com');
+      await sendNotification({
+        recipientEmail,
+        senderName: creatorName,
+        senderAvatar: user?.user_metadata?.avatar_url,
+        title: `New Task Assigned: ${newTask.code}`,
+        message: `Task "${newTask.title}" was assigned to you by ${creatorName}.`,
+        taskCode: newTask.code,
+        type: 'assignment',
+      });
+    } catch (e) {
+      console.warn('Notification trigger notice:', e);
     }
 
     setIsSubmitting(false);

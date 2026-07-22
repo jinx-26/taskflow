@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,6 +15,9 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useAuth } from '../../hooks/useAuth';
+import { fetchLiveNotifications, NotificationItem } from '../../services/notificationService';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -40,6 +43,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const location = useLocation();
+  const { user } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const loadUnreadCount = async () => {
+    if (!user?.email) return;
+    const list = await fetchLiveNotifications(user.email);
+    const unread = list.filter((n) => !n.isRead).length;
+    setUnreadCount(unread);
+  };
+
+  useEffect(() => {
+    loadUnreadCount();
+
+    if (isSupabaseConfigured && user?.email) {
+      const channel = supabase
+        .channel('sidebar_notifications_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications' },
+          () => {
+            loadUnreadCount();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user]);
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-white border-r border-slate-200/80 select-none">
@@ -81,6 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
+          const isNotifItem = item.path === '/notifications';
 
           return (
             <NavLink
@@ -107,6 +141,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="flex-1 truncate">{item.name}</span>
               )}
 
+              {/* Dynamic Live Unread Notifications Badge */}
+              {!collapsed && isNotifItem && unreadCount > 0 && (
+                <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-brand-600 text-white shadow-soft-xs animate-in fade-in-50">
+                  {unreadCount}
+                </span>
+              )}
+
               {/* Active Indicator bar */}
               {isActive && (
                 <span className="absolute left-0 top-2 bottom-2 w-1 bg-brand-600 rounded-r-full" />
@@ -116,33 +157,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      {/* Upgrade Banner or Quick Action */}
-      {!collapsed && (
-        <div className="p-3 m-3 rounded-xl bg-slate-50 border border-slate-200/80">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Sparkles className="w-4 h-4 text-brand-600" />
-            <span className="text-xs font-bold text-slate-900">TaskFlow Sync v2.4</span>
+      {/* Footer / System Status */}
+      <div className="p-3 border-t border-slate-100">
+        {!collapsed ? (
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-bold text-slate-800">TaskFlow Sync v2.4</span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-tight">
+              All systems operational. Realtime & Roles active.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-            All systems operational. Auth & Routes active.
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="flex justify-center">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100" title="System operational" />
+          </div>
+        )}
 
-      {/* Collapse Toggle Footer (Desktop only) */}
-      <div className="hidden md:flex items-center justify-between p-3 border-t border-slate-100">
+        {/* Desktop Collapse Toggle */}
         <button
           onClick={onToggleCollapse}
-          className={cn(
-            'flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors',
-            collapsed && 'justify-center px-0'
-          )}
+          className="hidden md:flex items-center gap-2 w-full mt-2 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
         >
           {collapsed ? (
-            <ChevronRight className="w-4 h-4 text-slate-600" />
+            <ChevronRight className="w-4 h-4 mx-auto text-slate-400" />
           ) : (
             <>
-              <ChevronLeft className="w-4 h-4 text-slate-600" />
+              <ChevronLeft className="w-4 h-4 text-slate-400" />
               <span>Collapse Sidebar</span>
             </>
           )}
@@ -153,10 +195,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Desktop Sidebar */}
+      {/* Desktop Persistent Sidebar */}
       <aside
         className={cn(
-          'hidden md:block fixed top-0 left-0 bottom-0 z-30 transition-all duration-300 ease-in-out',
+          'hidden md:block fixed left-0 top-0 bottom-0 z-30 transition-all duration-300 ease-in-out',
           collapsed ? 'w-20' : 'w-64'
         )}
       >
@@ -166,7 +208,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile Drawer Backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+          className="md:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity"
           onClick={onCloseMobile}
         />
       )}
@@ -174,7 +216,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile Drawer */}
       <aside
         className={cn(
-          'md:hidden fixed top-0 left-0 bottom-0 z-50 w-72 bg-white transition-transform duration-300 ease-in-out shadow-soft-lg',
+          'md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 bg-white transition-transform duration-300 ease-in-out shadow-soft-lg',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >

@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { fetchLiveNotifications, markAllAsRead, NotificationItem } from '../../services/notificationService';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { CreateTaskModal } from './CreateTaskModal';
@@ -31,7 +33,35 @@ export const TopNav: React.FC<TopNavProps> = ({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const loadNotifications = async () => {
+    if (!user?.email) return;
+    const list = await fetchLiveNotifications(user.email);
+    setNotificationsList(list);
+  };
+
+  useEffect(() => {
+    loadNotifications();
+
+    if (isSupabaseConfigured && user?.email) {
+      const channel = supabase
+        .channel('topnav_notifications_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications' },
+          () => {
+            loadNotifications();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -138,6 +168,9 @@ export const TopNav: React.FC<TopNavProps> = ({
             title="Notifications"
           >
             <Bell className="w-5 h-5" />
+            {notificationsList.some(n => !n.isRead) && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-brand-600 ring-2 ring-white animate-pulse" />
+            )}
           </button>
 
           {/* Notifications Dropdown Preview */}
@@ -145,10 +178,48 @@ export const TopNav: React.FC<TopNavProps> = ({
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-soft-lg border border-slate-200/80 py-3 z-50 animate-in fade-in-50 duration-150">
               <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-900">Notifications</span>
+                {notificationsList.some(n => !n.isRead) && (
+                  <button
+                    onClick={async () => {
+                      if (user?.email) {
+                        await markAllAsRead(user.email);
+                        setNotificationsList(prev => prev.map(n => ({ ...n, isRead: true })));
+                      }
+                    }}
+                    className="text-[10px] font-semibold text-brand-600 hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
               </div>
-              <div className="p-6 text-center text-slate-400 text-xs">
-                No unread notifications
-              </div>
+
+              {notificationsList.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 text-xs">
+                  No notifications yet
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                  {notificationsList.slice(0, 5).map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        navigate('/notifications');
+                      }}
+                      className={`p-3 transition-colors cursor-pointer hover:bg-slate-50 ${
+                        !n.isRead ? 'bg-brand-50/20' : ''
+                      }`}
+                    >
+                      <p className="text-xs font-bold text-slate-800 truncate">
+                        {n.senderName} <span className="font-medium text-slate-600">• {n.title}</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{n.message}</p>
+                      <span className="text-[10px] text-slate-400 block mt-1">{n.time}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="pt-2 px-3 border-t border-slate-100 text-center">
                 <button 
                   onClick={() => { setNotificationsOpen(false); navigate('/notifications'); }}

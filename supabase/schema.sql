@@ -112,11 +112,36 @@ CREATE POLICY "Authenticated users can update tasks" ON public.tasks FOR UPDATE 
 CREATE POLICY "Authenticated users can delete tasks" ON public.tasks FOR DELETE TO authenticated USING (true);
 
 
--- Enable Realtime for live WebSocket task updates across users
+-- 5. Create Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient_email TEXT NOT NULL,
+  sender_name TEXT NOT NULL,
+  sender_avatar TEXT,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  task_code TEXT,
+  type TEXT DEFAULT 'assignment',
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Notifications viewable by authenticated users" ON public.notifications;
+DROP POLICY IF EXISTS "Authenticated users can insert notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Authenticated users can update notifications" ON public.notifications;
+
+CREATE POLICY "Notifications viewable by authenticated users" ON public.notifications FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users can insert notifications" ON public.notifications FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Authenticated users can update notifications" ON public.notifications FOR UPDATE TO authenticated USING (true);
+
+-- Enable Realtime for live WebSocket task & notification updates
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks;
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
   END IF;
 EXCEPTION
   WHEN OTHERS THEN NULL;
