@@ -5,7 +5,8 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { CreateTaskModal } from '../components/common/CreateTaskModal';
-import { CheckSquare, Plus, Search, Filter, Loader2, Sparkles, Inbox } from 'lucide-react';
+import { TaskDetailsModal } from '../components/common/TaskDetailsModal';
+import { CheckSquare, Plus, Search, Filter, Loader2, Inbox } from 'lucide-react';
 import { TaskPlaceholder } from '../types';
 import { fetchLiveTasks } from '../services/taskService';
 
@@ -14,6 +15,8 @@ export const Tasks: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<TaskPlaceholder | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
 
   const loadTasks = async () => {
     setIsLoading(true);
@@ -28,6 +31,13 @@ export const Tasks: React.FC = () => {
 
   const handleTaskCreated = (newTask: any) => {
     setTaskList((prev) => [newTask, ...prev]);
+  };
+
+  const handleTaskUpdated = (updatedTask: TaskPlaceholder) => {
+    setTaskList((prev) =>
+      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+    );
+    setSelectedTask(updatedTask);
   };
 
   const filteredTasks = taskList.filter(
@@ -101,11 +111,11 @@ export const Tasks: React.FC = () => {
               <Inbox className="w-6 h-6" />
             </div>
             <div className="space-y-1 max-w-sm">
-              <h3 className="text-base font-bold text-slate-900">No tasks found</h3>
+              <h3 className="text-base font-bold text-slate-900">No tasks assigned</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 {searchQuery
                   ? 'No tasks match your search filter.'
-                  : 'No tasks have been assigned yet in this workspace. Click Create Task to assign work.'}
+                  : 'No active tasks found. Click Create Task to assign work to a team member.'}
               </p>
             </div>
             <Button
@@ -137,8 +147,16 @@ export const Tasks: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredTasks.map((task) => (
-                    <tr key={task.id} className="hover:bg-slate-50 transition-colors cursor-pointer">
-                      <td className="py-3.5 px-4 font-mono font-bold text-brand-600">
+                    <tr
+                      key={task.id}
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setDetailsModalOpen(true);
+                      }}
+                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                      title="Click to view details, add comments, or mark complete"
+                    >
+                      <td className="py-3.5 px-4 font-mono font-bold text-brand-600 group-hover:underline">
                         {task.code}
                       </td>
                       <td className="py-3.5 px-4 text-slate-900 font-semibold max-w-xs truncate">
@@ -196,10 +214,19 @@ export const Tasks: React.FC = () => {
         </Card>
       )}
 
+      {/* Task Creation Modal */}
       <CreateTaskModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onTaskCreated={handleTaskCreated}
+      />
+
+      {/* Task Details & Completion Modal */}
+      <TaskDetailsModal
+        isOpen={detailsModalOpen}
+        onClose={() => setDetailsModalOpen(false)}
+        task={selectedTask}
+        onTaskUpdated={handleTaskUpdated}
       />
     </div>
   );

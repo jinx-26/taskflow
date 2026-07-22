@@ -25,11 +25,11 @@ interface SidebarProps {
 
 export const navigationItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Projects', path: '/projects', icon: FolderKanban, badge: '12' },
-  { name: 'Tasks', path: '/tasks', icon: CheckSquare, badge: '18' },
+  { name: 'Projects', path: '/projects', icon: FolderKanban },
+  { name: 'Tasks', path: '/tasks', icon: CheckSquare },
   { name: 'Teams', path: '/teams', icon: Users },
   { name: 'Calendar', path: '/calendar', icon: Calendar },
-  { name: 'Notifications', path: '/notifications', icon: Bell, badge: '3' },
+  { name: 'Notifications', path: '/notifications', icon: Bell },
   { name: 'Settings', path: '/settings', icon: Settings },
 ];
 
@@ -105,19 +105,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {!collapsed && (
                 <span className="flex-1 truncate">{item.name}</span>
-              )}
-
-              {!collapsed && item.badge && (
-                <span
-                  className={cn(
-                    'px-2 py-0.5 text-xs font-semibold rounded-full',
-                    isActive
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
-                  )}
-                >
-                  {item.badge}
-                </span>
               )}
 
               {/* Active Indicator bar */}

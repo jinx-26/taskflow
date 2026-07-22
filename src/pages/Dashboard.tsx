@@ -5,17 +5,15 @@ import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { CreateTaskModal } from '../components/common/CreateTaskModal';
+import { TaskDetailsModal } from '../components/common/TaskDetailsModal';
 import {
   FolderKanban,
   CheckCircle2,
   Clock,
-  TrendingUp,
   Plus,
   Calendar,
-  AlertTriangle,
   Sparkles,
   Activity as ActivityIcon,
-  Filter,
   Inbox,
 } from 'lucide-react';
 import {
@@ -45,6 +43,8 @@ export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Team Lead';
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<TaskPlaceholder | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [tasks, setTasks] = useState<TaskPlaceholder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -58,6 +58,13 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  const handleTaskUpdated = (updatedTask: TaskPlaceholder) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+    );
+    setSelectedTask(updatedTask);
+  };
 
   const completedCount = tasks.filter((t) => t.status === 'Done').length;
   const pendingCount = tasks.filter((t) => t.status !== 'Done').length;
@@ -79,7 +86,7 @@ export const Dashboard: React.FC = () => {
               Welcome back, {userName} 👋
             </h1>
             <p className="text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              You have <span className="font-semibold text-brand-300">{tasks.length} total tasks</span> in your workspace. Select a task or click <span className="font-semibold text-white">New Task</span> to assign work.
+              You have <span className="font-semibold text-brand-300">{tasks.length} total tasks</span> in your workspace. Click any task below to manage, comment, or mark complete.
             </p>
           </div>
 
@@ -272,8 +279,16 @@ export const Dashboard: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {tasks.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 text-slate-900 font-semibold">
+                    <tr
+                      key={item.id}
+                      onClick={() => {
+                        setSelectedTask(item);
+                        setDetailsModalOpen(true);
+                      }}
+                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                      title="Click to view details, add comments, or mark complete"
+                    >
+                      <td className="py-3 px-3 text-slate-900 font-semibold group-hover:text-brand-600">
                         {item.title}
                       </td>
                       <td className="py-3 px-3 text-slate-500">
@@ -306,7 +321,17 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3 px-3 text-right">
-                        <Badge variant="primary">{item.status}</Badge>
+                        <Badge
+                          variant={
+                            item.status === 'Done'
+                              ? 'success'
+                              : item.status === 'In Progress'
+                              ? 'primary'
+                              : 'purple'
+                          }
+                        >
+                          {item.status}
+                        </Badge>
                       </td>
                     </tr>
                   ))}
@@ -321,6 +346,13 @@ export const Dashboard: React.FC = () => {
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onTaskCreated={() => loadDashboardData()}
+      />
+
+      <TaskDetailsModal
+        isOpen={detailsModalOpen}
+        onClose={() => setDetailsModalOpen(false)}
+        task={selectedTask}
+        onTaskUpdated={handleTaskUpdated}
       />
     </div>
   );

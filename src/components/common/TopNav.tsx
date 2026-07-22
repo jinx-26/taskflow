@@ -127,7 +127,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           </span>
         )}
 
-        {/* Notifications Icon (UI Only) */}
+        {/* Notifications Icon */}
         <div className="relative">
           <button
             onClick={() => {
@@ -138,7 +138,6 @@ export const TopNav: React.FC<TopNavProps> = ({
             title="Notifications"
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-600 ring-2 ring-white" />
           </button>
 
           {/* Notifications Dropdown Preview */}
@@ -146,30 +145,16 @@ export const TopNav: React.FC<TopNavProps> = ({
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-soft-lg border border-slate-200/80 py-3 z-50 animate-in fade-in-50 duration-150">
               <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-900">Notifications</span>
-                <span className="text-[10px] font-semibold text-brand-600 hover:underline cursor-pointer">
-                  Mark all as read
-                </span>
               </div>
-              <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                <div className="p-3 hover:bg-slate-50 transition-colors cursor-pointer">
-                  <p className="text-xs font-medium text-slate-800">
-                    Sarah commented on <span className="font-semibold">TaskFlow Dashboard Redesign</span>
-                  </p>
-                  <span className="text-[10px] text-slate-400">10 mins ago</span>
-                </div>
-                <div className="p-3 hover:bg-slate-50 transition-colors cursor-pointer">
-                  <p className="text-xs font-medium text-slate-800">
-                    You were assigned to <span className="font-semibold">Supabase Auth Guard</span>
-                  </p>
-                  <span className="text-[10px] text-slate-400">1 hour ago</span>
-                </div>
+              <div className="p-6 text-center text-slate-400 text-xs">
+                No unread notifications
               </div>
               <div className="pt-2 px-3 border-t border-slate-100 text-center">
                 <button 
                   onClick={() => { setNotificationsOpen(false); navigate('/notifications'); }}
                   className="text-xs font-semibold text-brand-600 hover:text-brand-700"
                 >
-                  View all notifications →
+                  View all notifications
                 </button>
               </div>
             </div>
