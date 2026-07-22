@@ -28,7 +28,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [project, setProject] = useState('Auth System');
   const [assigneeName, setAssigneeName] = useState(teamMembersList[1].name); // Jignesh Giri by default
   const [priority, setPriority] = useState<'Urgent' | 'High' | 'Medium' | 'Low'>('High');
-  const [dueDate, setDueDate] = useState('Jul 30, 2026');
+  const [dueDate, setDueDate] = useState('2026-07-30');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -45,6 +45,10 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       avatar: undefined,
     };
 
+    const formattedDate = dueDate
+      ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'Jul 30, 2026';
+
     const newTask = {
       id: `task-${Date.now()}`,
       code: `TSK-${Math.floor(100 + Math.random() * 900)}`,
@@ -54,7 +58,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       status: 'In Progress',
       assignee: selectedAssignee,
       createdBy: user?.user_metadata?.full_name || user?.email || 'Current User',
-      dueDate,
+      dueDate: formattedDate,
     };
 
     if (isSupabaseConfigured) {
@@ -177,14 +181,19 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 </select>
               </div>
 
-              {/* Due Date Input */}
-              <Input
-                label="Due Date"
-                type="text"
-                placeholder="Jul 30, 2026"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
+              {/* Due Date Input with Native Calendar Picker */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium cursor-pointer"
+                  required
+                />
+              </div>
             </div>
 
             <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">

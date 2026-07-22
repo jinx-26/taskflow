@@ -41,8 +41,19 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     if (task) {
       setCurrentStatus(task.status);
       setCurrentPriority(task.priority);
-      setComments([]);
       setSuccessMsg('');
+
+      // Persistent task comments by Task ID
+      const stored = localStorage.getItem(`taskflow_comments_${task.id}`);
+      if (stored) {
+        try {
+          setComments(JSON.parse(stored));
+        } catch (e) {
+          setComments([]);
+        }
+      } else {
+        setComments([]);
+      }
     }
   }, [task]);
 
@@ -102,17 +113,19 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
 
   const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newComment.trim()) return;
+    if (!newComment.trim() || !task) return;
 
     const commentObj: CommentItem = {
       id: `c-${Date.now()}`,
       author: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Team Member',
       avatar: user?.user_metadata?.avatar_url,
       text: newComment.trim(),
-      timestamp: 'Just now',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setComments((prev) => [commentObj, ...prev]);
+    const updated = [commentObj, ...comments];
+    setComments(updated);
+    localStorage.setItem(`taskflow_comments_${task.id}`, JSON.stringify(updated));
     setNewComment('');
   };
 
