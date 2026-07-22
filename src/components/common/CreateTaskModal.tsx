@@ -3,6 +3,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { X, CheckSquare, User, Calendar, Tag, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -33,7 +34,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
@@ -56,18 +57,30 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       dueDate,
     };
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSuccessMsg(`Task "${newTask.code}" assigned to ${selectedAssignee.name} successfully!`);
-      if (onTaskCreated) {
-        onTaskCreated(newTask);
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('tasks').insert([{
+          code: newTask.code,
+          title: newTask.title,
+          priority: newTask.priority,
+          status: 'In Progress',
+          created_by: user?.id,
+        }]);
+      } catch (err) {
+        console.warn('Supabase task insert notice:', err);
       }
-      setTimeout(() => {
-        setSuccessMsg('');
-        setTitle('');
-        onClose();
-      }, 1500);
-    }, 400);
+    }
+
+    setIsSubmitting(false);
+    setSuccessMsg(`Task "${newTask.code}" assigned to ${selectedAssignee.name} successfully!`);
+    if (onTaskCreated) {
+      onTaskCreated(newTask);
+    }
+    setTimeout(() => {
+      setSuccessMsg('');
+      setTitle('');
+      onClose();
+    }, 1500);
   };
 
   return (

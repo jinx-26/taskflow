@@ -113,7 +113,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         <Button
           variant="primary"
           size="sm"
-          className="hidden md:inline-flex text-xs font-semibold shadow-soft"
+          className="inline-flex text-xs font-semibold shadow-soft"
           leftIcon={<Plus className="w-3.5 h-3.5" />}
           onClick={() => setCreateModalOpen(true)}
         >
