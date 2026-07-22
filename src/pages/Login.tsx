@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Mail, Lock, ArrowRight, AlertCircle, Briefcase, UserCheck, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { signIn } = useAuth();
@@ -22,7 +22,7 @@ export const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Please enter your email and password');
+      setError('Please enter your email address and password');
       return;
     }
 
@@ -39,7 +39,7 @@ export const Login: React.FC = () => {
         navigate('/dashboard');
       }
     } else {
-      // Sign Up Flow
+      // Production Supabase Sign Up Flow
       if (isSupabaseConfigured) {
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
@@ -58,24 +58,15 @@ export const Login: React.FC = () => {
         } else if (data.session) {
           navigate('/dashboard');
         } else {
-          setSuccessMsg(`Account created as ${role}! Please check your email to verify your account or sign in now.`);
+          setSuccessMsg(`Account registered successfully as ${role}! You can now sign in.`);
           setMode('signin');
         }
       } else {
-        // Demo Mode Sign Up
         await signIn(email, password, role);
         setIsLoading(false);
         navigate('/dashboard');
       }
     }
-  };
-
-  const handleRoleLogin = async (demoEmail: string, demoRole: string) => {
-    setIsLoading(true);
-    setError(null);
-    await signIn(demoEmail, 'demo123456', demoRole);
-    setIsLoading(false);
-    navigate('/dashboard');
   };
 
   return (
@@ -102,7 +93,7 @@ export const Login: React.FC = () => {
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          Create Real Account
+          Create Account
         </button>
       </div>
 
@@ -113,7 +104,7 @@ export const Login: React.FC = () => {
         <p className="text-xs text-slate-500 mt-1">
           {mode === 'signin'
             ? 'Sign in to access your projects and assigned tasks'
-            : 'Register a real account with a specific workspace role'}
+            : 'Register a new account for your organization'}
         </p>
       </div>
 
@@ -144,16 +135,16 @@ export const Login: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Select Workspace Role
+                Workspace Role
               </label>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as any)}
                 className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
               >
-                <option value="Manager">Manager (Sarita Rani Guleria)</option>
-                <option value="Member">Member (Jignesh Giri)</option>
+                <option value="Manager">Manager (Project & Team Management)</option>
                 <option value="Lead">Lead (Technical Lead)</option>
+                <option value="Member">Member (Software Engineer / Team Member)</option>
               </select>
             </div>
           </>
@@ -162,7 +153,7 @@ export const Login: React.FC = () => {
         <Input
           label="Email Address"
           type="email"
-          placeholder="saritarani.guleria@hfcl.com"
+          placeholder="your.email@company.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           leftIcon={<Mail className="w-4 h-4" />}
@@ -203,40 +194,9 @@ export const Login: React.FC = () => {
           isLoading={isLoading}
           rightIcon={<ArrowRight className="w-4 h-4" />}
         >
-          {mode === 'signin' ? 'Sign In to Workspace' : `Register as ${role}`}
+          {mode === 'signin' ? 'Sign In to Workspace' : `Register Account (${role})`}
         </Button>
       </form>
-
-      {/* Quick Demo Option for local preview */}
-      <div className="pt-4 border-t border-slate-100 text-center space-y-3">
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-          One-Click Test Accounts
-        </span>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs bg-purple-50/50 hover:bg-purple-100 text-purple-800 border-purple-200/80 font-semibold"
-            onClick={() => handleRoleLogin('saritarani.guleria@hfcl.com', 'Manager')}
-            isLoading={isLoading}
-            leftIcon={<Briefcase className="w-3.5 h-3.5 text-purple-600" />}
-          >
-            👔 Sarita (Manager)
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs bg-blue-50/50 hover:bg-blue-100 text-brand-800 border-brand-200/80 font-semibold"
-            onClick={() => handleRoleLogin('jignesh.giri2005@gmail.com', 'Member')}
-            isLoading={isLoading}
-            leftIcon={<UserCheck className="w-3.5 h-3.5 text-brand-600" />}
-          >
-            🧑‍💻 Jignesh (Member)
-          </Button>
-        </div>
-      </div>
     </div>
   );
 };

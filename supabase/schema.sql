@@ -1,6 +1,6 @@
 -- ====================================================================
--- TASKFLOW SUPABASE DATABASE SCHEMA
--- Copy & Paste this entire file into your Supabase SQL Editor:
+-- TASKFLOW SUPABASE COMPLETE PRODUCTION SCHEMA & USER ROLE SETUP
+-- Copy & paste this entire script into your Supabase SQL Editor:
 -- https://supabase.com/dashboard/project/zabzwsdvbgzjlkfszxhn/sql/new
 -- ====================================================================
 
@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable RLS on Profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Profiles Policies
+-- Drop existing policies if any to avoid duplication
+DROP POLICY IF EXISTS "Public profiles are viewable by authenticated users" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+
 CREATE POLICY "Public profiles are viewable by authenticated users"
   ON public.profiles FOR SELECT
   TO authenticated
@@ -40,9 +43,11 @@ BEGIN
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', SPLIT_PART(NEW.email, '@', 1)),
     COALESCE(NEW.raw_user_meta_data->>'avatar_url', ''),
-    'Member'
+    COALESCE(NEW.raw_user_meta_data->>'role', 'Member')
   )
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -66,29 +71,24 @@ CREATE TABLE IF NOT EXISTS public.projects (
   due_date TIMESTAMPTZ
 );
 
--- Enable RLS on Projects
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
--- Projects Policies
+DROP POLICY IF EXISTS "Projects viewable by authenticated users" ON public.projects;
+DROP POLICY IF EXISTS "Authenticated users can create projects" ON public.projects;
+DROP POLICY IF EXISTS "Authenticated users can update projects" ON public.projects;
+DROP POLICY IF EXISTS "Authenticated users can delete projects" ON public.projects;
+
 CREATE POLICY "Projects viewable by authenticated users"
-  ON public.projects FOR SELECT
-  TO authenticated
-  USING (true);
+  ON public.projects FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can create projects"
-  ON public.projects FOR INSERT
-  TO authenticated
-  WITH CHECK (true);
+  ON public.projects FOR INSERT TO authenticated WITH CHECK (true);
 
 CREATE POLICY "Authenticated users can update projects"
-  ON public.projects FOR UPDATE
-  TO authenticated
-  USING (true);
+  ON public.projects FOR UPDATE TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can delete projects"
-  ON public.projects FOR DELETE
-  TO authenticated
-  USING (true);
+  ON public.projects FOR DELETE TO authenticated USING (true);
 
 
 -- 4. Create Tasks Table
@@ -106,29 +106,24 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   due_date TIMESTAMPTZ
 );
 
--- Enable RLS on Tasks
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
--- Tasks Policies
+DROP POLICY IF EXISTS "Tasks viewable by authenticated users" ON public.tasks;
+DROP POLICY IF EXISTS "Authenticated users can insert tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Authenticated users can update tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Authenticated users can delete tasks" ON public.tasks;
+
 CREATE POLICY "Tasks viewable by authenticated users"
-  ON public.tasks FOR SELECT
-  TO authenticated
-  USING (true);
+  ON public.tasks FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can insert tasks"
-  ON public.tasks FOR INSERT
-  TO authenticated
-  WITH CHECK (true);
+  ON public.tasks FOR INSERT TO authenticated WITH CHECK (true);
 
 CREATE POLICY "Authenticated users can update tasks"
-  ON public.tasks FOR UPDATE
-  TO authenticated
-  USING (true);
+  ON public.tasks FOR UPDATE TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can delete tasks"
-  ON public.tasks FOR DELETE
-  TO authenticated
-  USING (true);
+  ON public.tasks FOR DELETE TO authenticated USING (true);
 
 
 -- 5. Indexes for Query Performance
@@ -136,3 +131,28 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project ON public.tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON public.tasks(assignee_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.tasks(status);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON public.projects(status);
+
+
+-- ====================================================================
+-- 6. SET UP MANAGER AND MEMBER ROLES FOR YOUR REAL USERS
+-- (Run this after saritarani.guleria@hfcl.com and jignesh.giri2005@gmail.com sign up)
+-- ====================================================================
+
+-- Set Sarita Rani Guleria as MANAGER
+UPDATE public.profiles
+SET role = 'Manager', full_name = 'Sarita Rani Guleria'
+WHERE id IN (SELECT id FROM auth.users WHERE email = 'saritarani.guleria@hfcl.com');
+
+-- Set Jignesh Giri as MEMBER
+UPDATE public.profiles
+SET role = 'Member', full_name = 'Jignesh Giri'
+WHERE id IN (SELECT id FROM auth.users WHERE email = 'jignesh.giri2005@gmail.com');
+
+-- Verify registered profiles and assigned roles:
+SELECT 
+  u.email,
+  p.full_name,
+  p.role,
+  p.created_at
+FROM auth.users u
+JOIN public.profiles p ON u.id = p.id;
