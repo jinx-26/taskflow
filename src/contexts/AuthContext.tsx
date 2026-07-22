@@ -98,20 +98,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { error };
     }
 
-    // Role-based demo credentials
-    const isManager = email.includes('manager');
-    const isAdmin = email.includes('admin');
-    const userRole = role || (isManager ? 'Manager' : isAdmin ? 'Admin' : 'Member');
-    const userName = isManager ? 'Marcus Vance' : isAdmin ? 'Elena Rostova' : 'Alex Morgan';
-    const userAvatar = isManager
-      ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
-      : isAdmin
+    // Role-based accounts mapping
+    const isSarita = email.toLowerCase().includes('saritarani') || email.toLowerCase().includes('hfcl');
+    const isJignesh = email.toLowerCase().includes('jignesh');
+
+    const userRole = role || (isSarita ? 'Manager' : isJignesh ? 'Member' : 'Member');
+    const userName = isSarita ? 'Sarita Rani Guleria' : isJignesh ? 'Jignesh Giri' : email.split('@')[0];
+    const userAvatar = isSarita
+      ? 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150'
+      : isJignesh
       ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
       : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150';
 
     const demoUser: User = {
-      id: isManager ? 'demo-manager-456' : isAdmin ? 'demo-admin-789' : 'demo-member-123',
-      email: email || (isManager ? 'marcus.vance@taskflow.io' : 'alex.morgan@taskflow.io'),
+      id: isSarita ? 'user-sarita-001' : isJignesh ? 'user-jignesh-002' : 'user-demo-003',
+      email: email || (isSarita ? 'saritarani.guleria@hfcl.com' : 'jignesh.giri2005@gmail.com'),
       user_metadata: {
         full_name: userName,
         avatar_url: userAvatar,

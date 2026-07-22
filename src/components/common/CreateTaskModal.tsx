@@ -11,11 +11,10 @@ interface CreateTaskModalProps {
 }
 
 export const teamMembersList = [
-  { id: 'm-1', name: 'Alex Morgan', role: 'Member', email: 'alex.morgan@taskflow.io', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-  { id: 'm-2', name: 'Marcus Vance', role: 'Manager', email: 'marcus.vance@taskflow.io', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-  { id: 'm-3', name: 'Sarah Jenkins', role: 'Member', email: 'sarah.jenkins@taskflow.io', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
-  { id: 'm-4', name: 'David Kim', role: 'Member', email: 'david.kim@taskflow.io', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-  { id: 'm-5', name: 'Elena Rostova', role: 'Admin', email: 'elena.rostova@taskflow.io' },
+  { id: 'm-1', name: 'Sarita Rani Guleria', role: 'Manager', email: 'saritarani.guleria@hfcl.com', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150' },
+  { id: 'm-2', name: 'Jignesh Giri', role: 'Member', email: 'jignesh.giri2005@gmail.com', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
+  { id: 'm-3', name: 'Alex Morgan', role: 'Member', email: 'alex.morgan@taskflow.io', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
+  { id: 'm-4', name: 'David Kim', role: 'Lead', email: 'david.kim@taskflow.io', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
 ];
 
 export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
@@ -26,7 +25,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [project, setProject] = useState('Auth System');
-  const [assigneeName, setAssigneeName] = useState(teamMembersList[0].name);
+  const [assigneeName, setAssigneeName] = useState(teamMembersList[1].name); // Jignesh Giri by default
   const [priority, setPriority] = useState<'Urgent' | 'High' | 'Medium' | 'Low'>('High');
   const [dueDate, setDueDate] = useState('Jul 30, 2026');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,7 +84,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">Create & Assign Task</h2>
-              <p className="text-xs text-slate-500">Assign work to any member in your workspace</p>
+              <p className="text-xs text-slate-500">Assign work to any team member</p>
             </div>
           </div>
           <button
@@ -104,7 +103,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               label="Task Title"
-              placeholder="e.g. Implement Supabase Row Level Security Policies"
+              placeholder="e.g. Implement Enterprise Row Level Security"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
