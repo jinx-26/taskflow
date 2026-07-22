@@ -26,6 +26,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { TaskPlaceholder } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { fetchLiveTasks, formatDisplayDate } from '../services/taskService';
 
 // Productivity chart dataset
@@ -57,6 +58,23 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadDashboardData();
+
+    if (isSupabaseConfigured) {
+      const channel = supabase
+        .channel('dashboard_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tasks' },
+          () => {
+            loadDashboardData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, []);
 
   const handleTaskUpdated = (updatedTask: TaskPlaceholder) => {

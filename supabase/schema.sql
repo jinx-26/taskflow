@@ -112,11 +112,15 @@ CREATE POLICY "Authenticated users can update tasks" ON public.tasks FOR UPDATE 
 CREATE POLICY "Authenticated users can delete tasks" ON public.tasks FOR DELETE TO authenticated USING (true);
 
 
--- 5. Indexes for Query Performance
-CREATE INDEX IF NOT EXISTS idx_tasks_project ON public.tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON public.tasks(assignee_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.tasks(status);
-CREATE INDEX IF NOT EXISTS idx_projects_status ON public.projects(status);
+-- Enable Realtime for live WebSocket task updates across users
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.tasks;
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
 
 
 -- ====================================================================

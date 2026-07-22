@@ -8,6 +8,7 @@ import { CreateTaskModal } from '../components/common/CreateTaskModal';
 import { TaskDetailsModal } from '../components/common/TaskDetailsModal';
 import { CheckSquare, Plus, Search, Filter, Loader2, Inbox } from 'lucide-react';
 import { TaskPlaceholder } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { fetchLiveTasks, formatDisplayDate } from '../services/taskService';
 
 export const Tasks: React.FC = () => {
@@ -27,6 +28,23 @@ export const Tasks: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
+
+    if (isSupabaseConfigured) {
+      const channel = supabase
+        .channel('tasks_page_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tasks' },
+          () => {
+            loadTasks();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, []);
 
   const handleTaskCreated = (newTask: any) => {

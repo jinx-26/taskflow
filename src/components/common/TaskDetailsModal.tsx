@@ -59,6 +59,25 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           setComments([]);
         }
       }
+
+      if (isSupabaseConfigured) {
+        const channel = supabase
+          .channel(`modal_realtime_${task.id}`)
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'tasks', filter: `id=eq.${task.id}` },
+            (payload) => {
+              if (payload.new && Array.isArray((payload.new as any).comments)) {
+                setComments((payload.new as any).comments);
+              }
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      }
     }
   }, [task]);
 
