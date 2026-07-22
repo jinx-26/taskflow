@@ -28,6 +28,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
         name: t.assignee_name || (t.title.includes('PoE') ? 'Jignesh Giri' : 'Sarita Rani Guleria'),
         avatar: t.assignee_avatar || undefined,
       },
+      createdBy: t.created_by_name || (t.title.includes('PoE') ? 'Sarita Rani Guleria (Manager)' : 'Jignesh Giri (Member)'),
       dueDate: t.due_date || 'Jul 30, 2026',
       comments: t.comments || [],
     }));

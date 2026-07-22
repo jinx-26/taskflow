@@ -317,7 +317,12 @@ export const Dashboard: React.FC = () => {
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
                           <Avatar src={item.assignee?.avatar} name={item.assignee?.name} size="xs" />
-                          <span className="text-slate-700">{item.assignee?.name}</span>
+                          <div className="flex flex-col">
+                            <span className="text-slate-900 font-semibold">{item.assignee?.name}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              by {(item as any).createdBy ? (item as any).createdBy.split(' ')[0] : 'Sarita'}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-3 text-right">

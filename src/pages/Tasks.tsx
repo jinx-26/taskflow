@@ -199,7 +199,12 @@ export const Tasks: React.FC = () => {
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
                           <Avatar src={task.assignee?.avatar} name={task.assignee?.name} size="xs" />
-                          <span className="text-slate-700">{task.assignee?.name}</span>
+                          <div className="flex flex-col">
+                            <span className="text-slate-900 font-semibold">{task.assignee?.name}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              by {(task as any).createdBy ? (task as any).createdBy.split(' ')[0] : 'Sarita'}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="py-3.5 px-4 text-right text-slate-500">

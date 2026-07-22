@@ -49,6 +49,8 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'Jul 30, 2026';
 
+    const creatorName = user?.user_metadata?.full_name || (user?.email?.includes('sarita') ? 'Sarita Rani Guleria (Manager)' : user?.email?.includes('jignesh') ? 'Jignesh Giri (Member)' : user?.email) || 'Workspace Manager';
+
     const newTask = {
       id: `task-${Date.now()}`,
       code: `TSK-${Math.floor(100 + Math.random() * 900)}`,
@@ -57,7 +59,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       priority,
       status: 'In Progress',
       assignee: selectedAssignee,
-      createdBy: user?.user_metadata?.full_name || user?.email || 'Current User',
+      createdBy: creatorName,
       dueDate: formattedDate,
     };
 
@@ -71,6 +73,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           status: 'In Progress',
           assignee_name: selectedAssignee.name,
           assignee_avatar: selectedAssignee.avatar || '',
+          created_by_name: creatorName,
           due_date: formattedDate,
           created_by: user?.id,
           comments: [],

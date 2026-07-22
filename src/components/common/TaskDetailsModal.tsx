@@ -221,20 +221,30 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           </div>
 
           {/* Details Metadata */}
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-white border border-slate-100 shadow-soft-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white border border-slate-200/80 shadow-soft-xs">
               <Avatar src={task.assignee?.avatar} name={task.assignee?.name} size="xs" />
-              <div>
-                <span className="text-[10px] text-slate-400 block font-medium">Assigned To</span>
-                <span className="font-bold text-slate-800">{task.assignee?.name}</span>
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Assigned To</span>
+                <span className="font-bold text-slate-900 truncate block">{task.assignee?.name}</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-white border border-slate-100 shadow-soft-xs">
-              <Clock className="w-4 h-4 text-slate-400" />
-              <div>
-                <span className="text-[10px] text-slate-400 block font-medium">Due Date</span>
-                <span className="font-bold text-slate-800">{task.dueDate}</span>
+            <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white border border-slate-200/80 shadow-soft-xs">
+              <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-[10px] shrink-0">
+                ✍️
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Assigned By</span>
+                <span className="font-bold text-slate-900 truncate block">{(task as any).createdBy || 'Sarita Rani Guleria (Manager)'}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white border border-slate-200/80 shadow-soft-xs">
+              <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Due Date</span>
+                <span className="font-bold text-slate-900 truncate block">{task.dueDate}</span>
               </div>
             </div>
           </div>
