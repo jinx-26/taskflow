@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export const ForgotPassword: React.FC = () => {
   const { resetPassword } = useAuth();
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!email) {
+    if (!email.trim()) {
       setError('Please enter your registered email address');
       return;
     }
@@ -22,7 +24,7 @@ export const ForgotPassword: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
-    const { error: resetErr } = await resetPassword(email);
+    const { error: resetErr } = await resetPassword(email.trim());
 
     setIsLoading(false);
     if (resetErr) {
@@ -39,7 +41,7 @@ export const ForgotPassword: React.FC = () => {
           Reset password
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Enter your email and we'll send you instructions to reset your password.
+          Enter your email and we&apos;ll send you instructions to reset your password.
         </p>
       </div>
 
@@ -53,11 +55,14 @@ export const ForgotPassword: React.FC = () => {
             We have sent a password reset link to <strong className="font-semibold">{email}</strong>. Please follow the link in the email to set a new password.
           </p>
           <div className="pt-2">
-            <Link to="/login">
-              <Button variant="outline" size="sm" className="w-full text-xs">
-                Back to Sign In
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={() => navigate('/login')}
+            >
+              Back to Sign In
+            </Button>
           </div>
         </div>
       ) : (
@@ -74,7 +79,7 @@ export const ForgotPassword: React.FC = () => {
             type="email"
             placeholder="alex.morgan@taskflow.io"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
             leftIcon={<Mail className="w-4 h-4" />}
             required
           />
@@ -92,7 +97,7 @@ export const ForgotPassword: React.FC = () => {
           <div className="text-center pt-2">
             <Link
               to="/login"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Sign In</span>

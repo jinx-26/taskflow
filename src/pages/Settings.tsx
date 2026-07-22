@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Avatar } from '@/components/ui/Avatar';
-import { useAuth } from '@/hooks/useAuth';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Avatar } from '../components/ui/Avatar';
+import { useAuth } from '../hooks/useAuth';
 import { Settings as SettingsIcon, User, Key, Bell, Shield, Check } from 'lucide-react';
 
 export const Settings: React.FC = () => {

@@ -27,3 +27,4 @@ dist-isolation
 *.njsproj
 *.sln
 *.sw?
+*supabase_schema.sql

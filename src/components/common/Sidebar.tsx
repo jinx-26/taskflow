@@ -14,7 +14,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '../../lib/utils';
 
 interface SidebarProps {
   collapsed: boolean;

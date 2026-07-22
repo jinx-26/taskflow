@@ -1,18 +1,30 @@
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Badge } from '../components/ui/Badge';
+import { Avatar } from '../components/ui/Avatar';
 import { FolderKanban, Plus, Search, Filter, Layers, ArrowUpRight } from 'lucide-react';
 
-const mockProjects = [
+interface ProjectItem {
+  id: string;
+  name: string;
+  key: string;
+  description: string;
+  status: 'Active' | 'Planning' | 'Completed' | 'On Hold';
+  taskCount: number;
+  progress: number;
+  team: Array<{ name: string; avatar?: string }>;
+  dueDate: string;
+}
+
+const mockProjects: ProjectItem[] = [
   {
     id: 'p-1',
     name: 'Auth & Supabase Infrastructure',
     key: 'AUTH',
     description: 'Enterprise OAuth2, session persistence, and Row Level Security audit.',
-    status: 'Active' as const,
+    status: 'Active',
     taskCount: 14,
     progress: 75,
     team: [
@@ -26,7 +38,7 @@ const mockProjects = [
     name: 'TaskFlow Design System v2',
     key: 'DS',
     description: 'Tailwind CSS design tokens, Radix UI primitives, and dark theme support.',
-    status: 'Active' as const,
+    status: 'Active',
     taskCount: 22,
     progress: 90,
     team: [
@@ -39,7 +51,7 @@ const mockProjects = [
     name: 'Mobile iOS Companion App',
     key: 'MOB',
     description: 'React Native companion app for task management on the go.',
-    status: 'Planning' as const,
+    status: 'Planning',
     taskCount: 8,
     progress: 20,
     team: [

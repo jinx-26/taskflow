@@ -20,11 +20,12 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
 
-    /* Paths */
+    /* Paths & Types */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@/*": ["./src/*"]
+    },
+    "types": ["vite/client", "node"]
   },
-  "include": ["src"]
+  "include": ["src/**/*"]
 }

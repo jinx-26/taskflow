@@ -1,9 +1,9 @@
 import React from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
+import { useAuth } from '../hooks/useAuth';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Avatar } from '../components/ui/Avatar';
+import { Button } from '../components/ui/Button';
 import {
   FolderKanban,
   CheckCircle2,
@@ -27,7 +27,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { StatMetric, DeadlineItem, ActivityItem } from '@/types';
+import { StatMetric, DeadlineItem, ActivityItem } from '../types';
 
 // Dummy productivity chart dataset
 const productivityData = [

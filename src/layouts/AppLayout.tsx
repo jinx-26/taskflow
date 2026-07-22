@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Sidebar } from '@/components/common/Sidebar';
-import { TopNav } from '@/components/common/TopNav';
-import { cn } from '@/lib/utils';
+import { Sidebar } from '../components/common/Sidebar';
+import { TopNav } from '../components/common/TopNav';
+import { cn } from '../lib/utils';
 
 export const AppLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState<boolean>(false);

@@ -1,7 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://taskflow.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhc2tmbG93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE2NzczMDAwMDAsImV4cCI6MTk5Mjg3NjAwMH0.mock_key';
+// Safe environment variable reader for Vite frontend
+const metaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
+
+const supabaseUrl: string =
+  metaEnv.VITE_SUPABASE_URL ||
+  metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
+  'https://zabzwsdvbgzjlkfszxhn.supabase.co';
+
+const supabaseAnonKey: string =
+  metaEnv.VITE_SUPABASE_ANON_KEY ||
+  metaEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  'sb_publishable_74Qt2BwujAigJl2cHE2gzw_8KgRbEcn';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -11,8 +21,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 export const isSupabaseConfigured = Boolean(
-  import.meta.env.VITE_SUPABASE_URL &&
-  import.meta.env.VITE_SUPABASE_ANON_KEY &&
-  !import.meta.env.VITE_SUPABASE_URL.includes('your-supabase-project') &&
-  !import.meta.env.VITE_SUPABASE_URL.includes('example')
+  supabaseUrl &&
+  supabaseAnonKey &&
+  !supabaseUrl.includes('your-supabase-project')
 );

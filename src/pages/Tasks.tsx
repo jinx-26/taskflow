@@ -1,11 +1,11 @@
 import React from 'react';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
+import { Card, CardContent } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Badge } from '../components/ui/Badge';
+import { Avatar } from '../components/ui/Avatar';
 import { CheckSquare, Plus, Search, Filter, Clock, AlertCircle } from 'lucide-react';
-import { TaskPlaceholder } from '@/types';
+import { TaskPlaceholder } from '../types';
 
 const mockTasks: TaskPlaceholder[] = [
   {

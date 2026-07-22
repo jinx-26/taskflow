@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { useAuth } from '../hooks/useAuth';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { Mail, Lock, ArrowRight, AlertCircle, Sparkles } from 'lucide-react';
 
 export const Login: React.FC = () => {
