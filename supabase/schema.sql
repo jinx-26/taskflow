@@ -86,13 +86,17 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   code VARCHAR(20) NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
+  project TEXT DEFAULT 'Auth System',
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
   priority TEXT DEFAULT 'Medium' CHECK (priority IN ('Urgent', 'High', 'Medium', 'Low')),
   status TEXT DEFAULT 'Todo' CHECK (status IN ('Backlog', 'Todo', 'In Progress', 'In Review', 'Done')),
+  assignee_name TEXT,
+  assignee_avatar TEXT,
   assignee_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  comments JSONB DEFAULT '[]'::jsonb,
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  due_date TIMESTAMPTZ
+  due_date TEXT
 );
 
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;

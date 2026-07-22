@@ -1,22 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { TaskPlaceholder } from '../types';
 
-export interface TaskRecord {
-  id: string;
-  code: string;
-  title: string;
-  description?: string;
-  project?: string;
-  priority: 'Urgent' | 'High' | 'Medium' | 'Low';
-  status: 'Backlog' | 'Todo' | 'In Progress' | 'In Review' | 'Done';
-  assignee_name?: string;
-  assignee_avatar?: string;
-  assignee_id?: string;
-  created_by?: string;
-  created_at?: string;
-  due_date?: string;
-}
-
 export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
   if (!isSupabaseConfigured) {
     return [];
@@ -39,50 +23,16 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
       title: t.title,
       project: t.project || 'Auth System',
       priority: t.priority || 'Medium',
-      status: t.status || 'Todo',
+      status: t.status || 'In Progress',
       assignee: {
-        name: t.assignee_name || 'Assigned Member',
-        avatar: t.assignee_avatar,
+        name: t.assignee_name || (t.title.includes('PoE') ? 'Jignesh Giri' : 'Sarita Rani Guleria'),
+        avatar: t.assignee_avatar || undefined,
       },
-      dueDate: t.due_date ? new Date(t.due_date).toLocaleDateString() : 'Jul 30, 2026',
+      dueDate: t.due_date || 'Jul 30, 2026',
+      comments: t.comments || [],
     }));
   } catch (err) {
     console.error('fetchLiveTasks error:', err);
     return [];
-  }
-}
-
-export async function createLiveTask(taskData: {
-  code: string;
-  title: string;
-  project: string;
-  priority: string;
-  status: string;
-  assignee_name: string;
-  assignee_avatar?: string;
-  due_date?: string;
-  created_by_id?: string;
-}): Promise<boolean> {
-  if (!isSupabaseConfigured) return true;
-
-  try {
-    const { error } = await supabase.from('tasks').insert([
-      {
-        code: taskData.code,
-        title: taskData.title,
-        priority: taskData.priority,
-        status: taskData.status,
-        assignee_id: taskData.created_by_id,
-        created_by: taskData.created_by_id,
-      },
-    ]);
-
-    if (error) {
-      console.warn('Supabase task insert warning:', error.message);
-    }
-    return true;
-  } catch (err) {
-    console.error('createLiveTask error:', err);
-    return false;
   }
 }

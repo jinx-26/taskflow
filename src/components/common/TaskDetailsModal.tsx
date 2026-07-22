@@ -43,16 +43,20 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
       setCurrentPriority(task.priority);
       setSuccessMsg('');
 
-      // Persistent task comments by Task ID
-      const stored = localStorage.getItem(`taskflow_comments_${task.id}`);
-      if (stored) {
-        try {
-          setComments(JSON.parse(stored));
-        } catch (e) {
+      // Prefer live Supabase comments
+      if (Array.isArray((task as any).comments) && (task as any).comments.length > 0) {
+        setComments((task as any).comments);
+      } else {
+        const stored = localStorage.getItem(`taskflow_comments_${task.id}`);
+        if (stored) {
+          try {
+            setComments(JSON.parse(stored));
+          } catch (e) {
+            setComments([]);
+          }
+        } else {
           setComments([]);
         }
-      } else {
-        setComments([]);
       }
     }
   }, [task]);
@@ -111,7 +115,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     }
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
+  const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim() || !task) return;
 
@@ -125,6 +129,18 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
 
     const updated = [commentObj, ...comments];
     setComments(updated);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase
+          .from('tasks')
+          .update({ comments: updated })
+          .eq('id', task.id);
+      } catch (err) {
+        console.warn('Supabase comment sync error:', err);
+      }
+    }
+
     localStorage.setItem(`taskflow_comments_${task.id}`, JSON.stringify(updated));
     setNewComment('');
   };

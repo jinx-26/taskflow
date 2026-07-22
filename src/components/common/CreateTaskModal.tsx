@@ -66,9 +66,14 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         await supabase.from('tasks').insert([{
           code: newTask.code,
           title: newTask.title,
+          project: newTask.project,
           priority: newTask.priority,
           status: 'In Progress',
+          assignee_name: selectedAssignee.name,
+          assignee_avatar: selectedAssignee.avatar || '',
+          due_date: formattedDate,
           created_by: user?.id,
+          comments: [],
         }]);
       } catch (err) {
         console.warn('Supabase task insert notice:', err);
