@@ -26,7 +26,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { TaskPlaceholder } from '../types';
-import { fetchLiveTasks } from '../services/taskService';
+import { fetchLiveTasks, formatDisplayDate } from '../services/taskService';
 
 // Productivity chart dataset
 const productivityData = [
@@ -296,9 +296,9 @@ export const Dashboard: React.FC = () => {
                           {item.project}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-slate-600 flex items-center gap-1.5">
+                      <td className="py-3 px-3 text-slate-600 flex items-center gap-1.5 font-medium">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {item.dueDate}
+                        {formatDisplayDate(item.dueDate)}
                       </td>
                       <td className="py-3 px-3">
                         <Badge

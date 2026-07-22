@@ -7,6 +7,7 @@ import { X, CheckCircle2, Clock, MessageSquare, Send, Tag, User, Sparkles } from
 import { TaskPlaceholder } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { formatDisplayDate } from '../../services/taskService';
 
 interface CommentItem {
   id: string;
@@ -244,7 +245,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
               <Clock className="w-4 h-4 text-slate-400 shrink-0" />
               <div className="min-w-0 flex-1">
                 <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Due Date</span>
-                <span className="font-bold text-slate-900 truncate block">{task.dueDate}</span>
+                <span className="font-bold text-slate-900 truncate block">{formatDisplayDate(task.dueDate)}</span>
               </div>
             </div>
           </div>

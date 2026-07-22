@@ -8,7 +8,7 @@ import { CreateTaskModal } from '../components/common/CreateTaskModal';
 import { TaskDetailsModal } from '../components/common/TaskDetailsModal';
 import { CheckSquare, Plus, Search, Filter, Loader2, Inbox } from 'lucide-react';
 import { TaskPlaceholder } from '../types';
-import { fetchLiveTasks } from '../services/taskService';
+import { fetchLiveTasks, formatDisplayDate } from '../services/taskService';
 
 export const Tasks: React.FC = () => {
   const [taskList, setTaskList] = useState<TaskPlaceholder[]>([]);
@@ -207,8 +207,8 @@ export const Tasks: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-right text-slate-500">
-                        {task.dueDate}
+                      <td className="py-3.5 px-4 text-right font-medium text-slate-600">
+                        {formatDisplayDate(task.dueDate)}
                       </td>
                     </tr>
                   ))}

@@ -1,6 +1,28 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { TaskPlaceholder } from '../types';
 
+export function formatDisplayDate(dateStr?: string): string {
+  if (!dateStr) return 'Jul 30, 2026';
+  
+  if (dateStr.includes(',') && !dateStr.includes('T')) {
+    return dateStr;
+  }
+
+  try {
+    const dateObj = new Date(dateStr);
+    if (isNaN(dateObj.getTime())) {
+      return dateStr;
+    }
+    return dateObj.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
+
 export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
   if (!isSupabaseConfigured) {
     return [];
@@ -29,7 +51,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
         avatar: t.assignee_avatar || undefined,
       },
       createdBy: t.created_by_name || (t.title.includes('PoE') ? 'Sarita Rani Guleria (Manager)' : 'Jignesh Giri (Member)'),
-      dueDate: t.due_date || 'Jul 30, 2026',
+      dueDate: formatDisplayDate(t.due_date),
       comments: t.comments || [],
     }));
   } catch (err) {
