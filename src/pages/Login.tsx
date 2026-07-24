@@ -58,7 +58,13 @@ export const Login: React.FC = () => {
 
         if (signUpError) {
           setIsLoading(false);
-          setError(signUpError.message);
+          if (signUpError.message.toLowerCase().includes('rate limit')) {
+            setError(
+              'Supabase Email Rate Limit Reached. Disable "Confirm email" in Supabase Dashboard (Auth -> Providers -> Email) to allow instant signups without email throttling.'
+            );
+          } else {
+            setError(signUpError.message);
+          }
           return;
         }
 
