@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { X, CheckSquare, User, Calendar, Tag, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sendNotification } from '../../services/notificationService';
+import { UserProfile } from '../../types';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -12,26 +13,64 @@ interface CreateTaskModalProps {
   onTaskCreated?: (newTask: any) => void;
 }
 
-export const teamMembersList = [
-  { id: 'm-1', name: 'Sarita Rani Guleria', role: 'Manager', email: 'saritarani.guleria@hfcl.com', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150' },
-  { id: 'm-2', name: 'Jignesh Giri', role: 'Member', email: 'jignesh.giri2005@gmail.com', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
-  { id: 'm-3', name: 'Alex Morgan', role: 'Member', email: 'alex.morgan@taskflow.io', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-  { id: 'm-4', name: 'David Kim', role: 'Lead', email: 'david.kim@taskflow.io', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-];
-
 export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   isOpen,
   onClose,
   onTaskCreated,
 }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [title, setTitle] = useState('');
   const [project, setProject] = useState('Auth System');
-  const [assigneeName, setAssigneeName] = useState(teamMembersList[1].name); // Jignesh Giri by default
+  const [assigneeName, setAssigneeName] = useState('');
   const [priority, setPriority] = useState<'Urgent' | 'High' | 'Medium' | 'Low'>('High');
   const [dueDate, setDueDate] = useState('2026-07-30');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [workspaceMembers, setWorkspaceMembers] = useState<UserProfile[]>([]);
+
+  // Load real workspace accounts from public.profiles
+  const loadWorkspaceMembers = async () => {
+    try {
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('full_name', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          setWorkspaceMembers(data as UserProfile[]);
+          if (!assigneeName) {
+            setAssigneeName(data[0].full_name);
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load profiles for task modal:', err);
+    }
+
+    // Default fallback to active signed in user
+    if (user) {
+      const selfName = profile?.full_name || user.email?.split('@')[0] || 'Workspace User';
+      setWorkspaceMembers([
+        {
+          id: user.id,
+          full_name: selfName,
+          role: profile?.role || 'Member',
+          status: 'Approved',
+        },
+      ]);
+      if (!assigneeName) {
+        setAssigneeName(selfName);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadWorkspaceMembers();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -41,17 +80,18 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
     setIsSubmitting(true);
 
-    const selectedAssignee = teamMembersList.find(m => m.name === assigneeName) || {
-      name: assigneeName,
-      email: assigneeName.includes('Jignesh') ? 'jignesh.giri2005@gmail.com' : 'saritarani.guleria@hfcl.com',
-      avatar: undefined,
+    const selectedAssignee = workspaceMembers.find((m) => m.full_name === assigneeName) || {
+      id: user?.id || 'self',
+      full_name: assigneeName || 'Workspace Member',
+      role: 'Member',
+      avatar_url: '',
     };
 
     const formattedDate = dueDate
       ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'Jul 30, 2026';
 
-    const creatorName = user?.user_metadata?.full_name || (user?.email?.includes('sarita') ? 'Sarita Rani Guleria (Manager)' : user?.email?.includes('jignesh') ? 'Jignesh Giri (Member)' : user?.email) || 'Workspace Manager';
+    const creatorName = profile?.full_name || user?.email?.split('@')[0] || 'Workspace Manager';
 
     const newTask = {
       id: `task-${Date.now()}`,
@@ -60,26 +100,31 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       project,
       priority,
       status: 'In Progress',
-      assignee: selectedAssignee,
+      assignee: {
+        name: selectedAssignee.full_name,
+        avatar: selectedAssignee.avatar_url,
+      },
       createdBy: creatorName,
       dueDate: formattedDate,
     };
 
     if (isSupabaseConfigured) {
       try {
-        await supabase.from('tasks').insert([{
-          code: newTask.code,
-          title: newTask.title,
-          project: newTask.project,
-          priority: newTask.priority,
-          status: 'In Progress',
-          assignee_name: selectedAssignee.name,
-          assignee_avatar: selectedAssignee.avatar || '',
-          created_by_name: creatorName,
-          due_date: formattedDate,
-          created_by: user?.id,
-          comments: [],
-        }]);
+        await supabase.from('tasks').insert([
+          {
+            code: newTask.code,
+            title: newTask.title,
+            project: newTask.project,
+            priority: newTask.priority,
+            status: 'In Progress',
+            assignee_name: selectedAssignee.full_name,
+            assignee_avatar: selectedAssignee.avatar_url || '',
+            assignee_id: selectedAssignee.id,
+            due_date: formattedDate,
+            created_by: user?.id,
+            comments: [],
+          },
+        ]);
       } catch (err) {
         console.warn('Supabase task insert notice:', err);
       }
@@ -87,13 +132,12 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
     // Trigger Notification to Assigned Member
     try {
-      const recipientEmail = selectedAssignee.email || (selectedAssignee.name.includes('Jignesh') ? 'jignesh.giri2005@gmail.com' : 'saritarani.guleria@hfcl.com');
       await sendNotification({
-        recipientEmail,
+        recipientEmail: 'jignesh.giri2005@gmail.com',
         senderName: creatorName,
-        senderAvatar: user?.user_metadata?.avatar_url,
+        senderAvatar: profile?.avatar_url,
         title: `New Task Assigned: ${newTask.code}`,
-        message: `Task "${newTask.title}" was assigned to you by ${creatorName}.`,
+        message: `Task "${newTask.title}" was assigned to ${selectedAssignee.full_name} by ${creatorName}.`,
         taskCode: newTask.code,
         type: 'assignment',
       });
@@ -102,7 +146,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     }
 
     setIsSubmitting(false);
-    setSuccessMsg(`Task "${newTask.code}" assigned to ${selectedAssignee.name} successfully!`);
+    setSuccessMsg(`Task "${newTask.code}" assigned to ${selectedAssignee.full_name} successfully!`);
     if (onTaskCreated) {
       onTaskCreated(newTask);
     }
@@ -127,7 +171,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">Create & Assign Task</h2>
-              <p className="text-xs text-slate-500">Assign work to any team member</p>
+              <p className="text-xs text-slate-500">Assign work to registered team members</p>
             </div>
           </div>
           <button
@@ -146,7 +190,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               label="Task Title"
-              placeholder="e.g. Implement Enterprise Row Level Security"
+              placeholder="e.g. Implement Hardware Circuitry Testing"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
@@ -161,16 +205,17 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 <select
                   value={project}
                   onChange={(e) => setProject(e.target.value)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
                 >
-                  <option value="Auth System">Auth System</option>
-                  <option value="Design System">Design System</option>
-                  <option value="Core Architecture">Core Architecture</option>
-                  <option value="Mobile Companion App">Mobile Companion App</option>
+                  <option value="Hardware Architecture">Hardware Architecture</option>
+                  <option value="Mechanical Design & CAD">Mechanical Design & CAD</option>
+                  <option value="Embedded Firmware & RTOS">Embedded Firmware & RTOS</option>
+                  <option value="Telecom Solutions">Telecom Solutions</option>
+                  <option value="QA & Compliance Testing">QA & Compliance Testing</option>
                 </select>
               </div>
 
-              {/* Assignee Select */}
+              {/* Assignee Select dynamically populated from Database */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
                   Assign To Member
@@ -180,9 +225,9 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   onChange={(e) => setAssigneeName(e.target.value)}
                   className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
                 >
-                  {teamMembersList.map((member) => (
-                    <option key={member.id} value={member.name}>
-                      {member.name} ({member.role})
+                  {workspaceMembers.map((member) => (
+                    <option key={member.id} value={member.full_name}>
+                      {member.full_name} ({member.role})
                     </option>
                   ))}
                 </select>
@@ -198,7 +243,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as any)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
                 >
                   <option value="Urgent">Urgent</option>
                   <option value="High">High</option>
