@@ -28,19 +28,23 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [successMsg, setSuccessMsg] = useState('');
   const [workspaceMembers, setWorkspaceMembers] = useState<UserProfile[]>([]);
 
-  // Load real workspace accounts from public.profiles
+  // Load real workspace accounts from public.profiles (Excluding SuperAdmin & Admin)
   const loadWorkspaceMembers = async () => {
     try {
       if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
+          .in('role', ['Manager', 'Lead', 'Member', 'Viewer'])
           .order('full_name', { ascending: true });
 
-        if (!error && data && data.length > 0) {
-          setWorkspaceMembers(data as UserProfile[]);
-          if (!assigneeName) {
-            setAssigneeName(data[0].full_name);
+        if (!error && data) {
+          const assignable = (data as UserProfile[]).filter(
+            (m) => m.role !== 'SuperAdmin' && m.role !== 'Admin' && !m.is_superadmin
+          );
+          setWorkspaceMembers(assignable);
+          if (assignable.length > 0 && !assigneeName) {
+            setAssigneeName(assignable[0].full_name);
           }
           return;
         }
@@ -49,14 +53,14 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       console.warn('Could not load profiles for task modal:', err);
     }
 
-    // Default fallback to active signed in user
+    // Default fallback
     if (user) {
-      const selfName = profile?.full_name || user.email?.split('@')[0] || 'Workspace User';
+      const selfName = profile?.full_name || user.email?.split('@')[0] || 'Workspace Member';
       setWorkspaceMembers([
         {
           id: user.id,
           full_name: selfName,
-          role: profile?.role || 'Member',
+          role: profile?.role === 'Manager' || profile?.role === 'Lead' ? profile.role : 'Member',
           status: 'Approved',
         },
       ]);
