@@ -1,36 +1,79 @@
 import React, { createContext, useEffect, useState, ReactNode } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { User, Session } from '../types';
+import { User, Session, UserProfile, UserRole, UserStatus } from '../types';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
+  profile: UserProfile | null;
+  userRole: UserRole;
+  userStatus: UserStatus;
   loading: boolean;
-  signIn: (email: string, password?: string, role?: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null; message?: string }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
-  isDemo: boolean;
+  refreshProfile: () => Promise<void>;
+  hasRole: (allowedRoles: UserRole[]) => boolean;
 }
-
-const DEMO_USER_KEY = 'taskflow_demo_user';
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
+  profile: null,
+  userRole: 'Member',
+  userStatus: 'Pending',
   loading: true,
   signIn: async () => ({ error: null }),
   signOut: async () => {},
   resetPassword: async () => ({ error: null }),
   updatePassword: async () => ({ error: null }),
-  isDemo: false,
+  refreshProfile: async () => {},
+  hasRole: () => false,
 });
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [isDemo, setIsDemo] = useState<boolean>(!isSupabaseConfigured);
+
+  // Helper to fetch user's profile record from Supabase public.profiles
+  const fetchProfile = async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error || !data) {
+        // Fallback profile if row is creating asynchronously
+        const isMaster = userEmail?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+        return {
+          id: userId,
+          full_name: userEmail ? userEmail.split('@')[0] : 'User',
+          role: isMaster ? 'SuperAdmin' : 'Member',
+          status: isMaster ? 'Approved' : 'Pending',
+          is_superadmin: isMaster,
+        };
+      }
+
+      return data as UserProfile;
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+      return null;
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (user?.id) {
+      const updatedProf = await fetchProfile(user.id, user.email);
+      if (updatedProf) {
+        setProfile(updatedProf);
+      }
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -42,20 +85,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (mounted && currentSession) {
             setSession(currentSession as Session);
             setUser(currentSession.user as User);
+            const prof = await fetchProfile(currentSession.user.id, currentSession.user.email);
+            if (mounted) setProfile(prof);
           }
         } catch (err) {
-          console.warn('Supabase getSession warning, falling back:', err);
+          console.warn('Supabase getSession warning:', err);
         }
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-          (_event, currentSession) => {
+          async (_event, currentSession) => {
             if (mounted) {
               if (currentSession) {
                 setSession(currentSession as Session);
                 setUser(currentSession.user as User);
+                const prof = await fetchProfile(currentSession.user.id, currentSession.user.email);
+                if (mounted) setProfile(prof);
               } else {
                 setSession(null);
                 setUser(null);
+                setProfile(null);
               }
               setLoading(false);
             }
@@ -68,22 +116,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           subscription.unsubscribe();
         };
       } else {
-        const storedDemoUser = localStorage.getItem(DEMO_USER_KEY);
-        if (storedDemoUser) {
-          try {
-            const parsedUser = JSON.parse(storedDemoUser);
-            if (mounted) {
-              setUser(parsedUser);
-              setSession({ user: parsedUser, access_token: 'demo-token' } as Session);
-            }
-          } catch (e) {
-            localStorage.removeItem(DEMO_USER_KEY);
-          }
-        }
-        if (mounted) {
-          setIsDemo(true);
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     }
 
@@ -94,7 +127,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, []);
 
-  const signIn = async (email: string, password?: string, role?: string): Promise<{ error: Error | null }> => {
+  const signIn = async (email: string, password?: string): Promise<{ error: Error | null }> => {
     setLoading(true);
 
     if (isSupabaseConfigured && password) {
@@ -111,39 +144,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (data.session && data.user) {
         setSession(data.session as Session);
         setUser(data.user as User);
+        const prof = await fetchProfile(data.user.id, data.user.email);
+        setProfile(prof);
       }
 
       setLoading(false);
       return { error: null };
     }
 
-    // Role-based accounts mapping for local demo mode
-    const isSarita = email.toLowerCase().includes('saritarani') || email.toLowerCase().includes('hfcl');
-    const isJignesh = email.toLowerCase().includes('jignesh');
-
-    const userRole = role || (isSarita ? 'Manager' : isJignesh ? 'Member' : 'Member');
-    const userName = isSarita ? 'Sarita Rani Guleria' : isJignesh ? 'Jignesh Giri' : email.split('@')[0];
-    const userAvatar = isSarita
-      ? 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150'
-      : isJignesh
-      ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-      : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150';
-
-    const demoUser: User = {
-      id: isSarita ? 'user-sarita-001' : isJignesh ? 'user-jignesh-002' : 'user-demo-003',
-      email: email || (isSarita ? 'saritarani.guleria@hfcl.com' : 'jignesh.giri2005@gmail.com'),
-      user_metadata: {
-        full_name: userName,
-        avatar_url: userAvatar,
-        role: userRole,
-      },
-    };
-
-    setUser(demoUser);
-    setSession({ user: demoUser, access_token: 'demo-token' } as Session);
-    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoUser));
     setLoading(false);
-    return { error: null };
+    return { error: new Error('Supabase is not configured or password was missing.') };
   };
 
   const signOut = async () => {
@@ -155,9 +165,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.error('Supabase sign out error:', err);
       }
     }
-    localStorage.removeItem(DEMO_USER_KEY);
     setUser(null);
     setSession(null);
+    setProfile(null);
     setLoading(false);
   };
 
@@ -170,7 +180,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return {
       error: null,
-      message: 'Password reset link sent to ' + email,
+      message: 'Password reset instructions sent to ' + email,
     };
   };
 
@@ -182,17 +192,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return { error: null };
   };
 
+  // Determine current active user role & status
+  const isMasterUser = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+  const userRole: UserRole = profile?.role || (isMasterUser ? 'SuperAdmin' : 'Member');
+  const userStatus: UserStatus = profile?.status || (isMasterUser ? 'Approved' : 'Pending');
+
+  const hasRole = (allowedRoles: UserRole[]): boolean => {
+    if (userRole === 'SuperAdmin') return true;
+    return allowedRoles.includes(userRole);
+  };
+
   return (
     <AuthContext.Provider
       value={{
         user,
         session,
+        profile,
+        userRole,
+        userStatus,
         loading,
         signIn,
         signOut,
         resetPassword,
         updatePassword,
-        isDemo,
+        refreshProfile,
+        hasRole,
       }}
     >
       {children}

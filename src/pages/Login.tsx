@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { UserRole } from '../types';
 
 export const Login: React.FC = () => {
   const { signIn } = useAuth();
@@ -14,7 +15,7 @@ export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<'Manager' | 'Lead' | 'Member'>('Member');
+  const [role, setRole] = useState<UserRole>('Member');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -34,11 +35,7 @@ export const Login: React.FC = () => {
       const { error: authError } = await signIn(email, password);
       setIsLoading(false);
       if (authError) {
-        if (authError.message?.toLowerCase().includes('email not confirmed')) {
-          setError('Email not confirmed in Supabase. Run Step 6 in the Supabase SQL Editor to auto-confirm emails, or check your inbox.');
-        } else {
-          setError(authError.message || 'Failed to sign in. Please check your credentials.');
-        }
+        setError(authError.message || 'Failed to sign in. Please check your credentials.');
       } else {
         navigate('/dashboard');
       }
@@ -46,11 +43,11 @@ export const Login: React.FC = () => {
       // Production Supabase Sign Up Flow
       if (isSupabaseConfigured) {
         const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
           options: {
             data: {
-              full_name: fullName || email.split('@')[0],
+              full_name: fullName.trim() || email.split('@')[0],
               role,
             },
           },
@@ -59,16 +56,13 @@ export const Login: React.FC = () => {
         setIsLoading(false);
         if (signUpError) {
           setError(signUpError.message);
-        } else if (data.session) {
-          navigate('/dashboard');
         } else {
-          setSuccessMsg(`Account registered successfully as ${role}! You can now sign in.`);
+          setSuccessMsg(`Account registered successfully as ${role}! An Administrator must approve your account before you can access the workspace. You can now sign in.`);
           setMode('signin');
         }
       } else {
-        await signIn(email, password, role);
+        setError('Supabase is not configured. Unable to complete registration.');
         setIsLoading(false);
-        navigate('/dashboard');
       }
     }
   };
@@ -108,7 +102,7 @@ export const Login: React.FC = () => {
         <p className="text-xs text-slate-500 mt-1">
           {mode === 'signin'
             ? 'Sign in to access your projects and assigned tasks'
-            : 'Register a new account for your organization'}
+            : 'Register a new account (Requires Admin Approval)'}
         </p>
       </div>
 
@@ -131,7 +125,7 @@ export const Login: React.FC = () => {
           <>
             <Input
               label="Full Name"
-              placeholder="e.g. Sarita Rani Guleria"
+              placeholder="e.g. Alex Morgan"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
@@ -139,16 +133,17 @@ export const Login: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                Workspace Role
+                Workspace Role (Requires Approval)
               </label>
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value as any)}
+                onChange={(e) => setRole(e.target.value as UserRole)}
                 className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
               >
                 <option value="Manager">Manager (Project & Team Management)</option>
                 <option value="Lead">Lead (Technical Lead)</option>
                 <option value="Member">Member (Software Engineer / Team Member)</option>
+                <option value="Viewer">Viewer (Read-Only Access)</option>
               </select>
             </div>
           </>

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Layers,
   Sparkles,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -43,8 +44,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, profile, userRole } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const isSuperAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.is_superadmin;
+  const isAdminOrSuper = isSuperAdmin || userRole === 'Admin';
 
   const loadUnreadCount = async () => {
     if (!user?.email) return;
@@ -155,6 +159,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </NavLink>
           );
         })}
+
+        {/* Conditional Secret Admin Links */}
+        {isAdminOrSuper && (
+          <div className="pt-2 mt-2 border-t border-slate-100">
+            <div className={cn('px-2 mb-1.5 text-[10px] font-bold text-amber-600 uppercase tracking-wider', collapsed && 'text-center')}>
+              {collapsed ? '••' : 'Admin'}
+            </div>
+            <NavLink
+              to="/sys-admin-panel-k3m8"
+              onClick={() => onCloseMobile()}
+              className={cn(
+                'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-amber-700 bg-amber-50/80 hover:bg-amber-100/80 transition-all',
+                collapsed && 'justify-center px-0'
+              )}
+              title={collapsed ? 'Admin Panel' : undefined}
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+              {!collapsed && <span>Admin Panel</span>}
+            </NavLink>
+          </div>
+        )}
+
+        {isSuperAdmin && (
+          <div className="pt-1">
+            <NavLink
+              to="/super-ctrl-sec-7x9q"
+              onClick={() => onCloseMobile()}
+              className={cn(
+                'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50/80 hover:bg-purple-100/80 transition-all',
+                collapsed && 'justify-center px-0'
+              )}
+              title={collapsed ? 'SuperAdmin Control' : undefined}
+            >
+              <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+              {!collapsed && <span>SuperAdmin Center</span>}
+            </NavLink>
+          </div>
+        )}
       </div>
 
       {/* Footer / System Status */}

@@ -28,7 +28,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenMobileSidebar,
   collapsed,
 }) => {
-  const { user, signOut, isDemo } = useAuth();
+  const { user, profile, userRole, signOut } = useAuth();
   const navigate = useNavigate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -80,13 +80,14 @@ export const TopNav: React.FC<TopNavProps> = ({
   };
 
   const userDisplayName =
+    profile?.full_name ||
     user?.user_metadata?.full_name ||
     user?.email?.split('@')[0] ||
-    'Team Member';
+    'Workspace User';
   const userEmail = user?.email || 'user@taskflow.io';
-  const userAvatar = user?.user_metadata?.avatar_url;
+  const userAvatar = profile?.avatar_url || user?.user_metadata?.avatar_url;
 
-  const userRole = user?.user_metadata?.role || 'Member';
+  const isSuperAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.is_superadmin;
 
   return (
     <header className="sticky top-0 z-20 h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
@@ -129,14 +130,24 @@ export const TopNav: React.FC<TopNavProps> = ({
         {/* User Role Badge */}
         <span
           className={`hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-            userRole === 'Manager'
-              ? 'bg-purple-50 text-purple-700 border-purple-200'
-              : userRole === 'Admin' || userRole === 'Owner'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              : 'bg-brand-50 text-brand-700 border-brand-200'
+            userRole === 'SuperAdmin'
+              ? 'bg-purple-100 text-purple-800 border-purple-300'
+              : userRole === 'Admin'
+              ? 'bg-amber-50 text-amber-800 border-amber-300'
+              : userRole === 'Manager'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+              : 'bg-slate-100 text-slate-700 border-slate-200'
           }`}
         >
-          {userRole === 'Manager' ? '👔 Manager' : userRole === 'Admin' ? '👑 Admin' : '🧑‍💻 Member'}
+          {userRole === 'SuperAdmin'
+            ? '🛡️ SuperAdmin'
+            : userRole === 'Admin'
+            ? '👑 Admin'
+            : userRole === 'Manager'
+            ? '👔 Manager'
+            : userRole === 'Lead'
+            ? '⚡ Lead'
+            : '🧑‍💻 Member'}
         </span>
 
         {/* Quick Assign Task Button */}
@@ -149,13 +160,6 @@ export const TopNav: React.FC<TopNavProps> = ({
         >
           New Task
         </Button>
-
-        {isDemo && (
-          <span className="hidden lg:inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full border border-amber-200/80">
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-            Demo Mode Active
-          </span>
-        )}
 
         {/* Notifications Icon */}
         <div className="relative">
@@ -269,6 +273,32 @@ export const TopNav: React.FC<TopNavProps> = ({
               </div>
 
               <div className="py-1">
+                {(isSuperAdmin || userRole === 'Admin') && (
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate('/sys-admin-panel-k3m8');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 transition-colors"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-600" />
+                    <span>Admin Panel</span>
+                  </button>
+                )}
+
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate('/super-ctrl-sec-7x9q');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50 transition-colors"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-purple-600" />
+                    <span>SuperAdmin Control Center</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     setUserMenuOpen(false);

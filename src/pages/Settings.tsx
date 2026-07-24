@@ -7,9 +7,9 @@ import { useAuth } from '../hooks/useAuth';
 import { Settings as SettingsIcon, User, Key, Bell, Shield, Check } from 'lucide-react';
 
 export const Settings: React.FC = () => {
-  const { user, isDemo } = useAuth();
-  const [name, setName] = useState(user?.user_metadata?.full_name || 'Alex Morgan');
-  const [email] = useState(user?.email || 'alex.morgan@taskflow.io');
+  const { user, profile, userRole, userStatus } = useAuth();
+  const [name, setName] = useState(profile?.full_name || user?.user_metadata?.full_name || 'Workspace User');
+  const [email] = useState(user?.email || 'user@taskflow.io');
   const [saved, setSaved] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
@@ -108,9 +108,9 @@ export const Settings: React.FC = () => {
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
             <div>
-              <p className="text-xs font-bold text-slate-800">Auth Status</p>
+              <p className="text-xs font-bold text-slate-800">Workspace Role & Status</p>
               <p className="text-[11px] text-slate-500">
-                {isDemo ? 'Interactive Local Demo Mode' : 'Connected to Supabase Cloud Auth'}
+                Assigned Role: <strong className="font-semibold text-purple-600">{userRole}</strong> • Account Status: <strong className="font-semibold text-emerald-600">{userStatus}</strong>
               </p>
             </div>
             <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
