@@ -58,10 +58,16 @@ export const Tasks: React.FC = () => {
     setSelectedTask(updatedTask);
   };
 
+  const handleTaskDeleted = (deletedTaskId: string) => {
+    setTaskList((prev) => prev.filter((t) => t.id !== deletedTaskId));
+    setSelectedTask(null);
+  };
+
   const filteredTasks = taskList.filter(
     (t) =>
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.code.toLowerCase().includes(searchQuery.toLowerCase())
+      !t.isDeleted &&
+      (t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.code.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
@@ -75,12 +81,12 @@ export const Tasks: React.FC = () => {
             </span>
             <span className="text-slate-300">•</span>
             <span className="text-xs font-semibold text-brand-600">
-              {taskList.length} {taskList.length === 1 ? 'Task' : 'Tasks'}
+              {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'}
             </span>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-1">
             <CheckSquare className="w-6 h-6 text-brand-600" />
-            Tasks
+            Tasks & Work Orders
           </h1>
         </div>
 
@@ -129,7 +135,7 @@ export const Tasks: React.FC = () => {
               <Inbox className="w-6 h-6" />
             </div>
             <div className="space-y-1 max-w-sm">
-              <h3 className="text-base font-bold text-slate-900">No tasks assigned</h3>
+              <h3 className="text-base font-bold text-slate-900">No active tasks</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 {searchQuery
                   ? 'No tasks match your search filter.'
@@ -154,12 +160,12 @@ export const Tasks: React.FC = () => {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-400 font-semibold uppercase tracking-wider">
-                    <th className="py-3 px-4">Code</th>
+                    <th className="py-3 px-4">Code & Type</th>
                     <th className="py-3 px-4">Task Title</th>
-                    <th className="py-3 px-4">Project</th>
+                    <th className="py-3 px-4">Project Track</th>
                     <th className="py-3 px-4">Priority</th>
                     <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Assignee</th>
+                    <th className="py-3 px-4">Assignees</th>
                     <th className="py-3 px-4 text-right">Due Date</th>
                   </tr>
                 </thead>
@@ -172,10 +178,17 @@ export const Tasks: React.FC = () => {
                         setDetailsModalOpen(true);
                       }}
                       className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                      title="Click to view details, add comments, or mark complete"
+                      title="Click to view details, invite co-assignees, add comments, or delete task"
                     >
                       <td className="py-3.5 px-4 font-mono font-bold text-brand-600 group-hover:underline">
-                        {task.code}
+                        <div className="flex items-center gap-1.5">
+                          <span>{task.code}</span>
+                          {task.issueType && (
+                            <span className="text-[10px] font-sans font-bold px-1.5 py-0.2 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                              {task.issueType}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 text-slate-900 font-semibold max-w-xs truncate">
                         {task.title}
@@ -216,13 +229,17 @@ export const Tasks: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          <Avatar src={task.assignee?.avatar} name={task.assignee?.name} size="xs" />
-                          <div className="flex flex-col">
-                            <span className="text-slate-900 font-semibold">{task.assignee?.name}</span>
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              by {(task as any).createdBy ? (task as any).createdBy.split(' ')[0] : 'Sarita'}
-                            </span>
+                          <div className="flex -space-x-1.5 overflow-hidden">
+                            <Avatar src={task.assignee?.avatar} name={task.assignee?.name} size="xs" />
+                            {task.coAssignees &&
+                              task.coAssignees.map((co, idx) => (
+                                <Avatar key={idx} src={co.avatar} name={co.name} size="xs" />
+                              ))}
                           </div>
+                          <span className="text-slate-900 font-semibold text-xs truncate max-w-[120px]">
+                            {task.assignee?.name}
+                            {task.coAssignees && task.coAssignees.length > 0 && ` +${task.coAssignees.length}`}
+                          </span>
                         </div>
                       </td>
                       <td className="py-3.5 px-4 text-right font-medium text-slate-600">
@@ -250,6 +267,7 @@ export const Tasks: React.FC = () => {
         onClose={() => setDetailsModalOpen(false)}
         task={selectedTask}
         onTaskUpdated={handleTaskUpdated}
+        onTaskDeleted={handleTaskDeleted}
       />
     </div>
   );

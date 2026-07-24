@@ -153,6 +153,7 @@ CREATE TABLE public.tasks (
   code VARCHAR(20) NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
+  issue_type TEXT DEFAULT 'Task' CHECK (issue_type IN ('Task', 'Bug', 'Feature', 'Improvement')),
   project TEXT DEFAULT 'General',
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
   priority TEXT DEFAULT 'Medium' CHECK (priority IN ('Urgent', 'High', 'Medium', 'Low')),
@@ -160,10 +161,19 @@ CREATE TABLE public.tasks (
   assignee_name TEXT,
   assignee_avatar TEXT,
   assignee_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  co_assignees JSONB DEFAULT '[]'::jsonb,
+  pending_invitations JSONB DEFAULT '[]'::jsonb,
+  subtasks JSONB DEFAULT '[]'::jsonb,
+  activity_log JSONB DEFAULT '[]'::jsonb,
   comments JSONB DEFAULT '[]'::jsonb,
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  due_date TEXT
+  due_date TEXT,
+  is_deleted BOOLEAN DEFAULT false,
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  estimated_hours INT DEFAULT 0,
+  logged_hours INT DEFAULT 0
 );
 
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;

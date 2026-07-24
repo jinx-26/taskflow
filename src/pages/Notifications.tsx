@@ -2,15 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
-import { Bell, Check, Inbox, CheckSquare, MessageSquare, CheckCircle2, UserPlus, Sparkles, Loader2 } from 'lucide-react';
+import { Bell, Check, Inbox, CheckSquare, MessageSquare, CheckCircle2, UserPlus, Sparkles, Loader2, XCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { fetchLiveNotifications, markAllAsRead, NotificationItem } from '../services/notificationService';
+import { respondToInvite } from '../services/taskService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export const Notifications: React.FC = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const loadNotifications = async () => {
     if (!user?.email) return;
@@ -47,6 +49,33 @@ export const Notifications: React.FC = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
+  const handleCollabResponse = async (notif: NotificationItem, accept: boolean) => {
+    if (!profile || !notif.taskCode) return;
+    setActionSuccess(null);
+
+    // Extract taskId from metadata or search task by code
+    try {
+      const { data: taskData } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('code', notif.taskCode)
+        .single();
+
+      if (taskData) {
+        await respondToInvite(taskData.id, notif.id, profile, accept);
+        setActionSuccess(
+          accept
+            ? `You accepted the collaboration request for ${notif.taskCode}!`
+            : `You declined the collaboration request for ${notif.taskCode}.`
+        );
+        loadNotifications();
+        setTimeout(() => setActionSuccess(null), 3000);
+      }
+    } catch (e) {
+      console.warn('Error responding to collab request:', e);
+    }
+  };
+
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
@@ -65,7 +94,7 @@ export const Notifications: React.FC = () => {
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-1">
             <Bell className="w-6 h-6 text-brand-600" />
-            Notifications
+            Notifications & Requests
           </h1>
         </div>
 
@@ -81,6 +110,13 @@ export const Notifications: React.FC = () => {
           </Button>
         )}
       </div>
+
+      {actionSuccess && (
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-semibold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{actionSuccess}</span>
+        </div>
+      )}
 
       {/* Notifications List */}
       {isLoading ? (
@@ -99,7 +135,7 @@ export const Notifications: React.FC = () => {
             <div className="space-y-1 max-w-sm">
               <h3 className="text-base font-bold text-slate-900">No notifications yet</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                When a manager assigns a task to you, or a team member completes work or comments, live notifications will appear here.
+                When a manager assigns a task, or a team member sends a collaboration invitation, live notifications will appear here.
               </p>
             </div>
           </CardContent>
@@ -110,37 +146,63 @@ export const Notifications: React.FC = () => {
             {notifications.map((notif) => (
               <div
                 key={notif.id}
-                className={`p-4 flex items-start gap-4 transition-colors cursor-pointer hover:bg-slate-50 ${
+                className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${
                   !notif.isRead ? 'bg-brand-50/20' : ''
                 }`}
               >
-                <div className="relative shrink-0">
-                  <Avatar src={notif.senderAvatar} name={notif.senderName} size="md" />
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white shadow-soft-xs flex items-center justify-center text-[10px]">
-                    {notif.type === 'assignment' ? '📋' : notif.type === 'completion' ? '✅' : '💬'}
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="relative shrink-0">
+                    <Avatar src={notif.senderAvatar} name={notif.senderName} size="md" />
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white shadow-soft-xs flex items-center justify-center text-[10px]">
+                      {notif.type === 'collab_request'
+                        ? '🤝'
+                        : notif.type === 'assignment'
+                        ? '📋'
+                        : notif.type === 'completion'
+                        ? '✅'
+                        : '💬'}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-slate-900">
+                        {notif.senderName}{' '}
+                        <span className="font-semibold text-slate-700">• {notif.title}</span>
+                      </p>
+                      <span className="text-[10px] text-slate-400 whitespace-nowrap">{notif.time}</span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">{notif.message}</p>
+                    {notif.taskCode && (
+                      <span className="inline-block mt-2 text-[10px] font-mono font-bold bg-slate-100 text-brand-700 px-2 py-0.5 rounded border border-slate-200">
+                        {notif.taskCode}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-bold text-slate-900">
-                      {notif.senderName}{' '}
-                      <span className="font-semibold text-slate-700">• {notif.title}</span>
-                    </p>
-                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{notif.time}</span>
+                {/* Interactive Collaboration Request Accept / Decline Action Buttons */}
+                {notif.type === 'collab_request' && (
+                  <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="text-xs bg-emerald-600 hover:bg-emerald-700 border-none shadow-soft-xs"
+                      onClick={() => handleCollabResponse(notif, true)}
+                      leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                      onClick={() => handleCollabResponse(notif, false)}
+                      leftIcon={<XCircle className="w-3.5 h-3.5 text-rose-500" />}
+                    >
+                      Decline
+                    </Button>
                   </div>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    {notif.message}
-                  </p>
-                  {notif.taskCode && (
-                    <span className="inline-block mt-2 text-[10px] font-mono font-bold bg-slate-100 text-brand-700 px-2 py-0.5 rounded border border-slate-200">
-                      {notif.taskCode}
-                    </span>
-                  )}
-                </div>
-
-                {!notif.isRead && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-brand-600 shrink-0 self-center" />
                 )}
               </div>
             ))}

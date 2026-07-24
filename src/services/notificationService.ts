@@ -8,7 +8,7 @@ export interface NotificationItem {
   title: string;
   message: string;
   taskCode?: string;
-  type: 'assignment' | 'completion' | 'comment' | 'announcement';
+  type: 'assignment' | 'completion' | 'comment' | 'announcement' | 'collab_request' | 'collab_response' | 'approval_request';
   isRead: boolean;
   time: string;
 }
@@ -97,7 +97,7 @@ export async function sendNotification(notif: {
   title: string;
   message: string;
   taskCode?: string;
-  type: 'assignment' | 'completion' | 'comment' | 'announcement';
+  type: 'assignment' | 'completion' | 'comment' | 'announcement' | 'collab_request' | 'collab_response' | 'approval_request';
 }): Promise<boolean> {
   const newNotifObj: NotificationItem = {
     id: `notif-${Date.now()}`,

@@ -30,3 +30,4 @@ dist-isolation
 *supabase_schema.sql
 *supabase_v2_clean_schema.sql
 *supabase_v2_clean_schema.sql
+*.sql

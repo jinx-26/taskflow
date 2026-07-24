@@ -95,13 +95,62 @@ export interface ProjectPlaceholder {
   dueDate: string;
 }
 
+export type IssueType = 'Task' | 'Bug' | 'Feature' | 'Improvement';
+
+export interface TaskCoAssignee {
+  id?: string;
+  name: string;
+  avatar?: string;
+  role?: string;
+}
+
+export interface SubtaskItem {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
+export interface TaskActivityLog {
+  id: string;
+  userName: string;
+  userAvatar?: string;
+  action: string;
+  timestamp: string;
+}
+
+export interface CollaborationRequest {
+  id: string;
+  taskId: string;
+  taskCode: string;
+  taskTitle: string;
+  invitedByName: string;
+  invitedById: string;
+  targetUserId: string;
+  targetUserEmail: string;
+  status: 'Pending' | 'Accepted' | 'Declined';
+  createdAt: string;
+}
+
 export interface TaskPlaceholder {
   id: string;
   code: string;
   title: string;
+  description?: string;
+  issueType?: IssueType;
   project: string;
   priority: 'Urgent' | 'High' | 'Medium' | 'Low';
   status: 'Backlog' | 'Todo' | 'In Progress' | 'In Review' | 'Done';
-  assignee: { name: string; avatar?: string };
+  assignee: { name: string; avatar?: string; id?: string };
+  coAssignees?: TaskCoAssignee[];
+  pendingInvitations?: CollaborationRequest[];
+  subtasks?: SubtaskItem[];
+  activityLog?: TaskActivityLog[];
+  comments?: any[];
   dueDate: string;
+  createdBy?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  estimatedHours?: number;
+  loggedHours?: number;
 }
