@@ -42,24 +42,59 @@ export const Login: React.FC = () => {
     } else {
       // Production Supabase Sign Up Flow
       if (isSupabaseConfigured) {
+        const userEmail = email.trim().toLowerCase();
+        const userFullName = fullName.trim() || userEmail.split('@')[0];
+
         const { data, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: userEmail,
           password,
           options: {
             data: {
-              full_name: fullName.trim() || email.split('@')[0],
+              full_name: userFullName,
               role,
             },
           },
         });
 
-        setIsLoading(false);
         if (signUpError) {
+          setIsLoading(false);
           setError(signUpError.message);
-        } else {
-          setSuccessMsg(`Account registered successfully as ${role}! An Administrator must approve your account before you can access the workspace. You can now sign in.`);
-          setMode('signin');
+          return;
         }
+
+        const isSuperAdmin = userEmail === 'jignesh.giri2005@gmail.com';
+
+        // Direct profile upsert fallback
+        if (data.user) {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            full_name: userFullName,
+            role: isSuperAdmin ? 'SuperAdmin' : role,
+            status: isSuperAdmin ? 'Approved' : 'Pending',
+            is_superadmin: isSuperAdmin,
+            updated_at: new Date().toISOString(),
+          });
+
+          // Insert real-time notification request for SuperAdmin & Admins
+          if (!isSuperAdmin) {
+            await supabase.from('notifications').insert({
+              recipient_email: 'jignesh.giri2005@gmail.com',
+              sender_name: userFullName,
+              title: 'New Account Approval Request',
+              message: `${userFullName} registered as ${role} and is awaiting Admin approval.`,
+              type: 'approval_request',
+            });
+          }
+        }
+
+        setIsLoading(false);
+
+        if (isSuperAdmin) {
+          setSuccessMsg('Master SuperAdmin registered and approved successfully! You can now sign in.');
+        } else {
+          setSuccessMsg(`Registration submitted for ${userFullName} as ${role}! An approval request has been sent to Administrators. You can sign in once an Admin approves your account.`);
+        }
+        setMode('signin');
       } else {
         setError('Supabase is not configured. Unable to complete registration.');
         setIsLoading(false);
@@ -102,7 +137,7 @@ export const Login: React.FC = () => {
         <p className="text-xs text-slate-500 mt-1">
           {mode === 'signin'
             ? 'Sign in to access your projects and assigned tasks'
-            : 'Register a new account (Requires Admin Approval)'}
+            : 'Register a new account (Sends approval request to Admin)'}
         </p>
       </div>
 
@@ -193,7 +228,7 @@ export const Login: React.FC = () => {
           isLoading={isLoading}
           rightIcon={<ArrowRight className="w-4 h-4" />}
         >
-          {mode === 'signin' ? 'Sign In to Workspace' : `Register Account (${role})`}
+          {mode === 'signin' ? 'Sign In to Workspace' : `Submit Registration Request (${role})`}
         </Button>
       </form>
     </div>

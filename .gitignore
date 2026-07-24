@@ -28,3 +28,4 @@ dist-isolation
 *.sln
 *.sw?
 *supabase_schema.sql
+*supabase_v2_clean_schema.sql

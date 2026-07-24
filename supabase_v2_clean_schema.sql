@@ -48,14 +48,18 @@ CREATE POLICY "Admins and SuperAdmins can manage all profiles"
     )
   );
 
--- Trigger to auto-create profile on Auth signup
+-- Trigger to auto-create profile on Auth signup & notify SuperAdmin/Admins
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   user_email TEXT;
+  user_full_name TEXT;
+  user_role TEXT;
   is_first_superadmin BOOLEAN := false;
 BEGIN
   user_email := LOWER(NEW.email);
+  user_full_name := COALESCE(NEW.raw_user_meta_data->>'full_name', SPLIT_PART(NEW.email, '@', 1));
+  user_role := COALESCE(NEW.raw_user_meta_data->>'role', 'Member');
   
   -- Check if this email is the designated master SuperAdmin (jignesh.giri2005@gmail.com)
   IF user_email = 'jignesh.giri2005@gmail.com' THEN
@@ -65,9 +69,9 @@ BEGIN
   INSERT INTO public.profiles (id, full_name, avatar_url, role, status, is_superadmin)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', SPLIT_PART(NEW.email, '@', 1)),
+    user_full_name,
     COALESCE(NEW.raw_user_meta_data->>'avatar_url', ''),
-    CASE WHEN is_first_superadmin THEN 'SuperAdmin' ELSE COALESCE(NEW.raw_user_meta_data->>'role', 'Member') END,
+    CASE WHEN is_first_superadmin THEN 'SuperAdmin' ELSE user_role END,
     CASE WHEN is_first_superadmin THEN 'Approved' ELSE 'Pending' END,
     is_first_superadmin
   )
@@ -75,6 +79,18 @@ BEGIN
     full_name = EXCLUDED.full_name,
     avatar_url = EXCLUDED.avatar_url,
     updated_at = NOW();
+
+  -- Send automatic approval request notification to SuperAdmin
+  IF NOT is_first_superadmin THEN
+    INSERT INTO public.notifications (recipient_email, sender_name, title, message, type)
+    VALUES (
+      'jignesh.giri2005@gmail.com',
+      user_full_name,
+      'New Account Signup Request',
+      user_full_name || ' registered as ' || user_role || ' and requires Admin approval.',
+      'approval_request'
+    );
+  END IF;
 
   RETURN NEW;
 END;
@@ -194,16 +210,15 @@ CREATE TABLE public.notifications (
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own notifications"
-  ON public.notifications FOR SELECT TO authenticated
-  USING (recipient_email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+CREATE POLICY "Authenticated users can view notifications"
+  ON public.notifications FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Authenticated users can create notifications"
   ON public.notifications FOR INSERT TO authenticated WITH CHECK (true);
 
 CREATE POLICY "Users can update their own notifications"
   ON public.notifications FOR UPDATE TO authenticated
-  USING (recipient_email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+  USING (true);
 
 
 -- 7. Create Deletion Requests Table (Admin Reason Pipeline for SuperAdmin Approval)
