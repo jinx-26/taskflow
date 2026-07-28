@@ -19,8 +19,6 @@ import { Notifications } from '../pages/Notifications';
 import { Settings } from '../pages/Settings';
 import { Announcements } from '../pages/Announcements';
 import { AdminPanel } from '../pages/AdminPanel';
-import { SuperAdminPanel } from '../pages/SuperAdminPanel';
-import { SuperAdminInit } from '../pages/SuperAdminInit';
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -38,11 +36,6 @@ export const AppRoutes: React.FC = () => {
         <Route path="/reset-password" element={<ResetPassword />} />
       </Route>
 
-      {/* Secret SuperAdmin Dynamic Initialization Route */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/super-init-key-9918a94" element={<SuperAdminInit />} />
-      </Route>
-
       {/* Protected Main Application Routes (Requires Auth & Approval Gate) */}
       <Route element={<ProtectedRoute />}>
         <Route element={<ApprovalGate />}>
@@ -56,14 +49,9 @@ export const AppRoutes: React.FC = () => {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />
 
-            {/* Secret Obfuscated Admin Panel Route */}
-            <Route element={<RoleGuard allowedRoles={['Admin', 'SuperAdmin']} />}>
+            {/* Admin Panel Route */}
+            <Route element={<RoleGuard allowedRoles={['Admin']} />}>
               <Route path="/sys-admin-panel-k3m8" element={<AdminPanel />} />
-            </Route>
-
-            {/* Secret Obfuscated SuperAdmin Panel Route */}
-            <Route element={<RoleGuard allowedRoles={['SuperAdmin']} />}>
-              <Route path="/super-ctrl-sec-7x9q" element={<SuperAdminPanel />} />
             </Route>
           </Route>
         </Route>

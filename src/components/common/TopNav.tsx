@@ -87,7 +87,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   const userEmail = user?.email || 'user@taskflow.io';
   const userAvatar = profile?.avatar_url || user?.user_metadata?.avatar_url;
 
-  const isSuperAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.is_superadmin;
+  const isAdmin = userRole === 'Admin' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
 
   return (
     <header className="sticky top-0 z-20 h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
@@ -130,24 +130,20 @@ export const TopNav: React.FC<TopNavProps> = ({
         {/* User Role Badge */}
         <span
           className={`hidden sm:inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-            userRole === 'SuperAdmin'
-              ? 'bg-purple-100 text-purple-800 border-purple-300'
-              : userRole === 'Admin'
+            userRole === 'Admin'
               ? 'bg-amber-50 text-amber-800 border-amber-300'
               : userRole === 'Manager'
               ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
               : 'bg-slate-100 text-slate-700 border-slate-200'
           }`}
         >
-          {userRole === 'SuperAdmin'
-            ? '🛡️ SuperAdmin'
-            : userRole === 'Admin'
+          {userRole === 'Admin'
             ? '👑 Admin'
             : userRole === 'Manager'
             ? '👔 Manager'
             : userRole === 'Lead'
-            ? '⚡ Lead'
-            : '🧑‍💻 Member'}
+            ? '🧢 Lead'
+            : '👷 Member'}
         </span>
 
         {/* Quick Assign Task Button */}
@@ -273,7 +269,7 @@ export const TopNav: React.FC<TopNavProps> = ({
               </div>
 
               <div className="py-1">
-                {(isSuperAdmin || userRole === 'Admin') && (
+                {isAdmin && (
                   <button
                     onClick={() => {
                       setUserMenuOpen(false);
@@ -283,19 +279,6 @@ export const TopNav: React.FC<TopNavProps> = ({
                   >
                     <ShieldCheck className="w-4 h-4 text-amber-600" />
                     <span>Admin Panel</span>
-                  </button>
-                )}
-
-                {isSuperAdmin && (
-                  <button
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      navigate('/super-ctrl-sec-7x9q');
-                    }}
-                    className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50 transition-colors"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-purple-600" />
-                    <span>SuperAdmin Control Center</span>
                   </button>
                 )}
 

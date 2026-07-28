@@ -48,14 +48,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .single();
 
       if (error || !data) {
-        // Fallback profile if row is creating asynchronously
         const isMaster = userEmail?.toLowerCase() === 'jignesh.giri2005@gmail.com';
         return {
           id: userId,
           full_name: userEmail ? userEmail.split('@')[0] : 'User',
-          role: isMaster ? 'SuperAdmin' : 'Member',
+          role: isMaster ? 'Admin' : 'Member',
           status: isMaster ? 'Approved' : 'Pending',
-          is_superadmin: isMaster,
         };
       }
 
@@ -147,23 +145,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const prof = await fetchProfile(data.user.id, data.user.email);
         setProfile(prof);
       }
+    } else {
+      // Mock Fallback
+      const isMaster = email.toLowerCase() === 'jignesh.giri2005@gmail.com';
+      const mockUser: User = {
+        id: isMaster ? 'master-admin-id' : 'mock-user-id',
+        email,
+        user_metadata: {
+          full_name: isMaster ? 'Jignesh Giri' : email.split('@')[0],
+          role: isMaster ? 'Admin' : 'Member',
+          status: isMaster ? 'Approved' : 'Pending',
+        },
+      };
 
-      setLoading(false);
-      return { error: null };
+      const mockProfile: UserProfile = {
+        id: mockUser.id,
+        full_name: isMaster ? 'Jignesh Giri' : email.split('@')[0],
+        role: isMaster ? 'Admin' : 'Member',
+        status: isMaster ? 'Approved' : 'Pending',
+      };
+
+      setUser(mockUser);
+      setProfile(mockProfile);
     }
 
     setLoading(false);
-    return { error: new Error('Supabase is not configured or password was missing.') };
+    return { error: null };
   };
 
   const signOut = async () => {
     setLoading(true);
     if (isSupabaseConfigured) {
-      try {
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.error('Supabase sign out error:', err);
-      }
+      await supabase.auth.signOut();
     }
     setUser(null);
     setSession(null);
@@ -171,35 +184,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(false);
   };
 
-  const resetPassword = async (email: string): Promise<{ error: Error | null; message?: string }> => {
+  const resetPassword = async (email: string) => {
     if (isSupabaseConfigured) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/reset-password`,
       });
-      return { error };
+      if (error) return { error };
+      return { error: null, message: 'Password reset link sent to your email.' };
     }
-    return {
-      error: null,
-      message: 'Password reset instructions sent to ' + email,
-    };
+    return { error: null, message: 'Password reset email triggered.' };
   };
 
-  const updatePassword = async (password: string): Promise<{ error: Error | null }> => {
+  const updatePassword = async (password: string) => {
     if (isSupabaseConfigured) {
       const { error } = await supabase.auth.updateUser({ password });
-      return { error };
+      if (error) return { error };
     }
     return { error: null };
   };
 
-  // Determine current active user role & status
-  const isMasterUser = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
-  const userRole: UserRole = profile?.role || (isMasterUser ? 'SuperAdmin' : 'Member');
-  const userStatus: UserStatus = profile?.status || (isMasterUser ? 'Approved' : 'Pending');
+  const isMasterAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+  const effectiveRole: UserRole = isMasterAdmin ? 'Admin' : profile?.role || 'Member';
+  const effectiveStatus: UserStatus = isMasterAdmin ? 'Approved' : profile?.status || 'Pending';
 
-  const hasRole = (allowedRoles: UserRole[]): boolean => {
-    if (userRole === 'SuperAdmin') return true;
-    return allowedRoles.includes(userRole);
+  const hasRole = (allowedRoles: UserRole[]) => {
+    if (effectiveRole === 'Admin') return true;
+    return allowedRoles.includes(effectiveRole);
   };
 
   return (
@@ -208,8 +218,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         user,
         session,
         profile,
-        userRole,
-        userStatus,
+        userRole: effectiveRole,
+        userStatus: effectiveStatus,
         loading,
         signIn,
         signOut,

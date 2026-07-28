@@ -13,7 +13,6 @@ import {
   Layers,
   ShieldCheck,
   X,
-  Bell,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../hooks/useAuth';
@@ -47,8 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { user, profile, userRole } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const isSuperAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.is_superadmin;
-  const isAdminOrSuper = isSuperAdmin || userRole === 'Admin';
+  const isAdmin = userRole === 'Admin' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
 
   const loadUnreadCount = async () => {
     if (!user?.email) return;
@@ -147,25 +145,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
 
-        {/* SuperAdmin / Admin Control Link */}
-        {isAdminOrSuper && (
+        {/* Admin Control Link */}
+        {isAdmin && (
           <div className="pt-4 mt-4 border-t border-slate-100">
             <div className={cn('px-2 mb-2 text-[11px] font-semibold text-amber-600 uppercase tracking-wider', collapsed && 'text-center')}>
               {collapsed ? 'ADM' : 'Administration'}
             </div>
             <NavLink
-              to={isSuperAdmin ? '/super-admin' : '/admin'}
+              to="/sys-admin-panel-k3m8"
               onClick={() => onCloseMobile()}
               className={cn(
                 'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-amber-700 bg-amber-50/70 hover:bg-amber-100/80 transition-all duration-150',
                 collapsed && 'justify-center px-0'
               )}
-              title={collapsed ? (isSuperAdmin ? 'SuperAdmin Panel' : 'Admin Panel') : undefined}
+              title={collapsed ? 'Admin Panel' : undefined}
             >
               <ShieldCheck className="w-5 h-5 shrink-0 text-amber-600" />
               {!collapsed && (
                 <span className="flex-1 truncate font-semibold">
-                  {isSuperAdmin ? 'SuperAdmin Panel' : 'Admin Approvals'}
+                  Admin Panel
                 </span>
               )}
             </NavLink>

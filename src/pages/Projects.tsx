@@ -71,7 +71,7 @@ export const Projects: React.FC = () => {
   const [projDesc, setProjDesc] = useState('');
   const [isSubmittingProj, setIsSubmittingProj] = useState(false);
 
-  const isManagerOrAdmin = userRole === 'SuperAdmin' || userRole === 'Admin' || userRole === 'Manager';
+  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
   const loadProjectsData = async () => {
     setIsLoading(true);

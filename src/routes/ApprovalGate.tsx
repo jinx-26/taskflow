@@ -7,9 +7,9 @@ import { Button } from '../components/ui/Button';
 export const ApprovalGate: React.FC = () => {
   const { user, profile, userStatus, signOut, refreshProfile } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.is_superadmin;
+  const isAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.role === 'Admin';
 
-  if (isSuperAdmin || userStatus === 'Approved') {
+  if (isAdmin || userStatus === 'Approved') {
     return <Outlet />;
   }
 
@@ -43,48 +43,33 @@ export const ApprovalGate: React.FC = () => {
 
           <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
             {userStatus === 'Pending' && (
-              <>Your registration as <strong className="text-amber-400 font-semibold">{profile?.role || 'Member'}</strong> has been submitted. An Administrator or SuperAdmin must approve your account before you can access the TaskFlow workspace.</>
+              <>Your registration as <strong className="text-amber-400 font-semibold">{profile?.role || 'Member'}</strong> has been submitted. An Administrator must approve your account before you can access the TaskFlow workspace.</>
             )}
             {userStatus === 'Rejected' && (
               <>Your access request to the TaskFlow workspace was not approved by workspace administrators. Please contact your administrator if you believe this is an error.</>
             )}
             {userStatus === 'Suspended' && (
-              <>Your account access has been temporarily suspended by an administrator. An audit reason may be under review by the SuperAdmin.</>
+              <>Your account has been temporarily suspended by an administrator.</>
             )}
           </p>
         </div>
 
-        <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-700/50 text-left text-xs space-y-1">
-          <div className="flex justify-between text-slate-400">
-            <span>Signed in as:</span>
-            <span className="font-semibold text-slate-200">{user?.email}</span>
-          </div>
-          <div className="flex justify-between text-slate-400">
-            <span>Requested Role:</span>
-            <span className="font-semibold text-amber-400">{profile?.role || 'Member'}</span>
-          </div>
-          <div className="flex justify-between text-slate-400">
-            <span>Status:</span>
-            <span className="font-semibold uppercase tracking-wider text-amber-300">{userStatus}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 pt-2">
+        <div className="pt-2 flex flex-col gap-2">
           <Button
-            variant="outline"
+            variant="primary"
             size="md"
-            className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-700/50"
-            onClick={refreshProfile}
+            onClick={() => refreshProfile()}
+            className="w-full justify-center text-xs font-semibold"
             leftIcon={<RefreshCw className="w-4 h-4" />}
           >
-            Check Status
+            Check Approval Status
           </Button>
 
           <Button
-            variant="danger"
+            variant="outline"
             size="md"
-            className="flex-1"
-            onClick={signOut}
+            onClick={() => signOut()}
+            className="w-full justify-center text-xs font-semibold text-slate-300 border-slate-700 hover:bg-slate-700/50"
             leftIcon={<LogOut className="w-4 h-4" />}
           >
             Sign Out

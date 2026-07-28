@@ -45,7 +45,7 @@ export const Announcements: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const isManagerOrAdmin = userRole === 'SuperAdmin' || userRole === 'Admin' || userRole === 'Manager';
+  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
   const loadAnnouncementsData = async () => {
     const list = await fetchAnnouncements();

@@ -8,14 +8,13 @@ interface RoleGuardProps {
 }
 
 export const RoleGuard: React.FC<RoleGuardProps> = ({ allowedRoles }) => {
-  const { user, profile, userRole } = useAuth();
+  const { user, userRole } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.is_superadmin;
+  const isAdmin = userRole === 'Admin' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
 
-  if (isSuperAdmin || allowedRoles.includes(userRole)) {
+  if (isAdmin || allowedRoles.includes(userRole)) {
     return <Outlet />;
   }
 
-  // Redirect unauthorized roles back to main dashboard
   return <Navigate to="/dashboard" replace />;
 };

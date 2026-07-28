@@ -18,7 +18,7 @@ export const Settings: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [msg, setMsg] = useState('');
 
-  const isAdminOrSuper = userRole === 'SuperAdmin' || userRole === 'Admin';
+  const isAdmin = userRole === 'Admin';
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,7 +150,7 @@ export const Settings: React.FC = () => {
       </Card>
 
       {/* Admin Panel Access Link */}
-      {isAdminOrSuper && (
+      {isAdmin && (
         <Card className="bg-amber-50/50 border-amber-200">
           <CardHeader>
             <CardTitle className="text-base font-bold text-amber-900 flex items-center gap-2">
@@ -162,7 +162,7 @@ export const Settings: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Link to={userRole === 'SuperAdmin' ? '/super-ctrl-sec-7x9q' : '/sys-admin-panel-k3m8'}>
+            <Link to="/sys-admin-panel-k3m8">
               <Button variant="primary" size="sm" className="bg-amber-600 hover:bg-amber-700 border-none text-white font-bold text-xs">
                 Open Admin Approval Panel →
               </Button>

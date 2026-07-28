@@ -70,7 +70,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
 
   const [successMsg, setSuccessMsg] = useState('');
 
-  const isManagerOrAdmin = userRole === 'SuperAdmin' || userRole === 'Admin' || userRole === 'Manager';
+  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
   useEffect(() => {
     if (task) {

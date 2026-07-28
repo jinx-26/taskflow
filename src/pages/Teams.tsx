@@ -22,7 +22,7 @@ export const Teams: React.FC = () => {
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isManagerOrAdmin = userRole === 'SuperAdmin' || userRole === 'Admin' || userRole === 'Manager';
+  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
   const loadTeamsData = async () => {
     setIsLoading(true);

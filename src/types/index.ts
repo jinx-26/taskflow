@@ -1,6 +1,6 @@
 import { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
-export type UserRole = 'SuperAdmin' | 'Admin' | 'Manager' | 'Lead' | 'Member';
+export type UserRole = 'Admin' | 'Manager' | 'Lead' | 'Member';
 export type UserStatus = 'Pending' | 'Approved' | 'Rejected' | 'Suspended';
 
 export interface UserProfile {
@@ -9,7 +9,6 @@ export interface UserProfile {
   avatar_url?: string;
   role: UserRole;
   status: UserStatus;
-  is_superadmin?: boolean;
   department_id?: string;
   team_id?: string;
   team_name?: string;
@@ -191,7 +190,7 @@ export interface CollaborationRequest {
   invitedByName: string;
   invitedById: string;
   targetUserId: string;
-  targetUserEmail: string;
+  targetUserEmail?: string;
   status: 'Pending' | 'Accepted' | 'Declined';
   createdAt: string;
 }
@@ -203,7 +202,7 @@ export interface TaskPlaceholder {
   description?: string;
   issueType?: IssueType;
   project: string;
-  project_id?: string; // Optional/nullable for standalone tasks
+  project_id?: string;
   priority: 'Urgent' | 'High' | 'Medium' | 'Low';
   status: 'Backlog' | 'Todo' | 'In Progress' | 'In Review' | 'Done';
   assignee: { name: string; avatar?: string; id?: string; teamName?: string; role?: string };
