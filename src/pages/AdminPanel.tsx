@@ -67,34 +67,58 @@ export const AdminPanel: React.FC = () => {
   const handleUpdateStatus = async (targetUserId: string, newStatus: UserStatus) => {
     setActionError(null);
     setActionSuccess(null);
+
+    // Optimistic UI update
+    setUsers((prev) =>
+      prev.map((u) => (u.id === targetUserId ? { ...u, status: newStatus } : u))
+    );
+
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', targetUserId);
+        .eq('id', targetUserId)
+        .select();
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error('Supabase RLS blocked the status update. Please ensure schema script was executed in SQL Editor.');
+      }
+
       setActionSuccess(`User status updated to ${newStatus}`);
-      fetchUsers();
     } catch (err: any) {
       setActionError(err.message || 'Failed to update user status');
+      fetchUsers(); // Rollback to server state
     }
   };
 
   const handleUpdateRole = async (targetUserId: string, newRole: UserRole) => {
     setActionError(null);
     setActionSuccess(null);
+
+    // Optimistic UI update
+    setUsers((prev) =>
+      prev.map((u) => (u.id === targetUserId ? { ...u, role: newRole } : u))
+    );
+
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .update({ role: newRole, updated_at: new Date().toISOString() })
-        .eq('id', targetUserId);
+        .eq('id', targetUserId)
+        .select();
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error('Supabase RLS blocked the role update.');
+      }
+
       setActionSuccess(`User role updated to ${newRole}`);
-      fetchUsers();
     } catch (err: any) {
       setActionError(err.message || 'Failed to update user role');
+      fetchUsers(); // Rollback
     }
   };
 
@@ -103,14 +127,18 @@ export const AdminPanel: React.FC = () => {
 
     setActionError(null);
     setActionSuccess(null);
+
+    // Optimistic UI update
+    setUsers((prev) => prev.filter((u) => u.id !== targetUserId));
+
     try {
       const { error } = await supabase.from('profiles').delete().eq('id', targetUserId);
       if (error) throw error;
 
       setActionSuccess(`Deleted user profile for ${targetName}`);
-      fetchUsers();
     } catch (err: any) {
       setActionError(err.message || 'Failed to delete user profile');
+      fetchUsers();
     }
   };
 

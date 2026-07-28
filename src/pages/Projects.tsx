@@ -22,9 +22,11 @@ import {
   Users,
   Inbox,
   Loader2,
+  CheckSquare,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { TaskPlaceholder } from '../types';
+import { TaskPlaceholder, UserProfile } from '../types';
 import { fetchLiveTasks } from '../services/taskService';
 import { TaskDetailsModal } from '../components/common/TaskDetailsModal';
 import { CreateTaskModal } from '../components/common/CreateTaskModal';
@@ -37,6 +39,7 @@ interface Project {
   description: string;
   status: 'Active' | 'Planning' | 'Completed' | 'On Hold';
   progress: number;
+  created_by?: string;
   due_date?: string;
   created_at?: string;
 }
@@ -50,8 +53,9 @@ interface ProjectFile {
 }
 
 export const Projects: React.FC = () => {
-  const { user, userRole } = useAuth();
+  const { user, profile, userRole } = useAuth();
   const [projectsList, setProjectsList] = useState<Project[]>([]);
+  const [myProjectMemberIds, setMyProjectMemberIds] = useState<string[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<'summary' | 'timeline' | 'board' | 'list' | 'files'>('board');
   const [tasks, setTasks] = useState<TaskPlaceholder[]>([]);
@@ -64,26 +68,36 @@ export const Projects: React.FC = () => {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
   
-  // New Project Modal State
+  // New Project Modal State with Member Selector
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
   const [projName, setProjName] = useState('');
   const [projKey, setProjKey] = useState('');
   const [projDesc, setProjDesc] = useState('');
+  const [availableProfiles, setAvailableProfiles] = useState<UserProfile[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isSubmittingProj, setIsSubmittingProj] = useState(false);
 
   const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
   const loadProjectsData = async () => {
     setIsLoading(true);
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && user) {
       try {
-        const [projRes, tasksRes] = await Promise.all([
+        const [projRes, membersRes, tasksRes, profilesRes] = await Promise.all([
           supabase.from('projects').select('*').order('created_at', { ascending: false }),
+          supabase.from('project_members').select('project_id').eq('user_id', user.id),
           fetchLiveTasks(),
+          supabase.from('profiles').select('*').eq('status', 'Approved'),
         ]);
 
         if (projRes.data) {
           setProjectsList(projRes.data as Project[]);
+        }
+        if (membersRes.data) {
+          setMyProjectMemberIds(membersRes.data.map((m) => m.project_id));
+        }
+        if (profilesRes.data) {
+          setAvailableProfiles(profilesRes.data as UserProfile[]);
         }
         setTasks(tasksRes);
       } catch (err) {
@@ -98,7 +112,7 @@ export const Projects: React.FC = () => {
 
   useEffect(() => {
     loadProjectsData();
-  }, []);
+  }, [user]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +123,7 @@ export const Projects: React.FC = () => {
 
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase
+        const { data: projData, error: projErr } = await supabase
           .from('projects')
           .insert([
             {
@@ -124,8 +138,18 @@ export const Projects: React.FC = () => {
           .select()
           .single();
 
-        if (!error && data) {
-          setProjectsList((prev) => [data as Project, ...prev]);
+        if (!projErr && projData) {
+          // Add creator and selected members into project_members
+          const membersToInsert = Array.from(new Set([user.id, ...selectedMemberIds])).map((uid) => ({
+            project_id: projData.id,
+            user_id: uid,
+            role: uid === user.id ? 'Manager' : 'Member',
+          }));
+
+          await supabase.from('project_members').insert(membersToInsert);
+
+          setProjectsList((prev) => [projData as Project, ...prev]);
+          setMyProjectMemberIds((prev) => [...prev, projData.id]);
         }
       } catch (err) {
         console.error('Error creating project:', err);
@@ -145,8 +169,15 @@ export const Projects: React.FC = () => {
     setProjName('');
     setProjKey('');
     setProjDesc('');
+    setSelectedMemberIds([]);
     setIsSubmittingProj(false);
     setShowCreateProjectModal(false);
+  };
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,7 +205,15 @@ export const Projects: React.FC = () => {
     }
   };
 
-  const filteredProjects = projectsList.filter((p) =>
+  // PRIVACY FILTER: Admins/Managers see all; Members ONLY see projects they were added to
+  const visibleProjects = projectsList.filter((p) => {
+    if (isManagerOrAdmin) return true;
+    const isCreator = p.created_by === user?.id;
+    const isMember = myProjectMemberIds.includes(p.id);
+    return isCreator || isMember;
+  });
+
+  const filteredProjects = visibleProjects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.key.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -193,7 +232,7 @@ export const Projects: React.FC = () => {
               HFCL Projects
             </span>
             <span className="text-slate-300">•</span>
-            <span className="text-xs font-semibold text-slate-500">Private Member Access</span>
+            <span className="text-xs font-semibold text-slate-500">Private Member Access Only</span>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-1">
             <FolderKanban className="w-6 h-6 text-brand-600" />
@@ -223,7 +262,7 @@ export const Projects: React.FC = () => {
                 else setShowCreateProjectModal(true);
               }}
             >
-              {selectedProject ? 'Create Task in Project' : 'Create New Project'}
+              {selectedProject ? 'Create Task in Project' : 'Create New Private Project'}
             </Button>
           )}
         </div>
@@ -251,9 +290,11 @@ export const Projects: React.FC = () => {
           <Card>
             <CardContent className="p-12 text-center text-slate-500 space-y-3">
               <FolderKanban className="w-12 h-12 text-slate-300 mx-auto" />
-              <h3 className="text-base font-bold text-slate-800">No Projects Created Yet</h3>
+              <h3 className="text-base font-bold text-slate-800">No Private Projects Available</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Managers and Admins can create private hardware R&D projects to group tasks and documents.
+                {isManagerOrAdmin
+                  ? 'Click "Create New Private Project" to start a hardware project and invite team members.'
+                  : 'You have not been added to any private projects yet. Contact your Project Manager to request access.'}
               </p>
               {isManagerOrAdmin && (
                 <Button
@@ -262,7 +303,7 @@ export const Projects: React.FC = () => {
                   leftIcon={<Plus className="w-4 h-4" />}
                   onClick={() => setShowCreateProjectModal(true)}
                 >
-                  Create First Project
+                  Create Private Project
                 </Button>
               )}
             </CardContent>
@@ -303,8 +344,8 @@ export const Projects: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between pt-1 text-xs text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Lock className="w-3.5 h-3.5 text-slate-400" /> Private Member Access
+                  <span className="flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                    <Lock className="w-3.5 h-3.5" /> Restricted Member Access
                   </span>
                   <span className="font-semibold text-brand-600 hover:underline">Click to View Details →</span>
                 </div>
@@ -471,7 +512,7 @@ export const Projects: React.FC = () => {
             </Card>
           )}
 
-          {/* Sub-tab 5: Files & Specs (Zero hardcoded files!) */}
+          {/* Sub-tab 5: Files & Specs */}
           {activeTab === 'files' && (
             <Card className="p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -523,14 +564,14 @@ export const Projects: React.FC = () => {
         </div>
       )}
 
-      {/* Create Project Modal */}
+      {/* Create Private Project Modal with Member Selector */}
       {showCreateProjectModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
                 <FolderKanban className="w-5 h-5 text-brand-600" />
-                Create New Project
+                Create Private Member Project
               </h3>
               <button onClick={() => setShowCreateProjectModal(false)} className="text-slate-400 hover:text-slate-600">
                 ✕
@@ -560,12 +601,49 @@ export const Projects: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={projDesc}
                   onChange={(e) => setProjDesc(e.target.value)}
-                  placeholder="Describe hardware requirements, CAD goals, firmware RTOS spec..."
+                  placeholder="Hardware requirements, CAD goals, firmware RTOS spec..."
                   className="w-full rounded-xl border border-slate-200 p-2.5 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
                 />
+              </div>
+
+              {/* Select Member Access */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-800 uppercase flex items-center justify-between">
+                  <span>Grant Access to Members ({selectedMemberIds.length} Selected)</span>
+                  <span className="text-[10px] text-emerald-600 font-semibold">Only selected members can view</span>
+                </label>
+                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 divide-y divide-slate-100 space-y-1 bg-slate-50/50">
+                  {availableProfiles.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 p-2">No other approved members found.</p>
+                  ) : (
+                    availableProfiles.map((p) => {
+                      if (p.id === user?.id) return null; // Creator automatically added
+                      const isSelected = selectedMemberIds.includes(p.id);
+                      return (
+                        <label
+                          key={p.id}
+                          className="flex items-center justify-between p-1.5 hover:bg-white rounded-lg cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleMemberSelection(p.id)}
+                              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                            />
+                            <span className="text-xs font-bold text-slate-800">{p.full_name}</span>
+                          </div>
+                          <Badge variant="neutral" className="text-[10px]">
+                            {p.role}
+                          </Badge>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2">
@@ -573,7 +651,7 @@ export const Projects: React.FC = () => {
                   Cancel
                 </Button>
                 <Button type="submit" variant="primary" size="sm" isLoading={isSubmittingProj}>
-                  Create Project
+                  Create Private Project
                 </Button>
               </div>
             </form>

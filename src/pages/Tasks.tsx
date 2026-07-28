@@ -105,14 +105,29 @@ export const Tasks: React.FC = () => {
     }
   };
 
+  const isManagerOrAdmin = profile?.role === 'Admin' || profile?.role === 'Manager' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+
   const filteredTasks = taskList.filter((t) => {
     if (t.isDeleted) return false;
 
-    // Filter by assigned user (primary assignee or co-assignee)
-    if (filterMode === 'assignedToMe' && user?.id) {
-      const isPrimary = t.assignee?.id === user.id;
+    // PRIVACY ENFORCEMENT: Non-managers only see tasks where they are primary assignee, co-assignee, or creator
+    if (!isManagerOrAdmin && user?.id) {
+      const isPrimary = t.assignee?.id === user.id || (profile?.full_name && t.assignee?.name?.toLowerCase() === profile.full_name.toLowerCase());
       const isCoAssignee = t.coAssignees?.some(
-        (ca) => ca.id === user.id || (profile?.full_name && ca.name === profile.full_name)
+        (ca) => ca.id === user.id || (profile?.full_name && ca.name?.toLowerCase() === profile.full_name.toLowerCase())
+      );
+      const isCreator = t.createdBy === user.id || (profile?.full_name && t.createdBy?.toLowerCase() === profile.full_name.toLowerCase());
+
+      if (!isPrimary && !isCoAssignee && !isCreator) {
+        return false;
+      }
+    }
+
+    // Filter by assigned user toggle
+    if (filterMode === 'assignedToMe' && user?.id) {
+      const isPrimary = t.assignee?.id === user.id || (profile?.full_name && t.assignee?.name?.toLowerCase() === profile.full_name.toLowerCase());
+      const isCoAssignee = t.coAssignees?.some(
+        (ca) => ca.id === user.id || (profile?.full_name && ca.name?.toLowerCase() === profile.full_name.toLowerCase())
       );
       if (!isPrimary && !isCoAssignee) return false;
     }
