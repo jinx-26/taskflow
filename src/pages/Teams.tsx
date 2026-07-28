@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Input } from '../components/ui/Input';
-import { Users, Plus, Cpu, Wrench, Binary, Network, ShieldCheck, UserCheck, Shield } from 'lucide-react';
+import { Users, Plus, Cpu, Wrench, Binary, Network, ShieldCheck, UserCheck, Shield, Loader2, Inbox } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { Team, UserProfile } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -26,42 +26,35 @@ export const Teams: React.FC = () => {
 
   const loadTeamsData = async () => {
     setIsLoading(true);
-    if (!isSupabaseConfigured) {
-      setTeams(fallbackTeams);
-      setIsLoading(false);
-      return;
-    }
+    if (isSupabaseConfigured) {
+      try {
+        const [teamsRes, profilesRes] = await Promise.all([
+          supabase.from('teams').select('*').order('created_at', { ascending: false }),
+          supabase.from('profiles').select('*').eq('status', 'Approved'),
+        ]);
 
-    try {
-      const [teamsRes, profilesRes] = await Promise.all([
-        supabase.from('teams').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('*').eq('status', 'Approved'),
-      ]);
+        if (profilesRes.data) {
+          setProfiles(profilesRes.data as UserProfile[]);
+        }
 
-      if (profilesRes.data) {
-        setProfiles(profilesRes.data as UserProfile[]);
+        if (teamsRes.data) {
+          const mappedTeams: Team[] = teamsRes.data.map((t) => {
+            const lead = profilesRes.data?.find((p) => p.id === t.lead_id);
+            const membersCount = profilesRes.data?.filter((p) => p.team_id === t.id).length || 0;
+            return {
+              id: t.id,
+              name: t.name,
+              description: t.description || 'Engineering & Operations Team',
+              lead_id: t.lead_id,
+              lead_name: lead?.full_name || 'Unassigned Lead',
+              members_count: membersCount,
+            };
+          });
+          setTeams(mappedTeams);
+        }
+      } catch (err) {
+        console.error('Error fetching teams:', err);
       }
-
-      if (teamsRes.data && teamsRes.data.length > 0) {
-        const mappedTeams: Team[] = teamsRes.data.map((t) => {
-          const lead = profilesRes.data?.find((p) => p.id === t.lead_id);
-          const membersCount = profilesRes.data?.filter((p) => p.team_id === t.id).length || 0;
-          return {
-            id: t.id,
-            name: t.name,
-            description: t.description || 'Engineering & Operations Team',
-            lead_id: t.lead_id,
-            lead_name: lead?.full_name || 'Unassigned Lead',
-            members_count: membersCount || 4,
-          };
-        });
-        setTeams(mappedTeams);
-      } else {
-        setTeams(fallbackTeams);
-      }
-    } catch (err) {
-      console.error('Error fetching teams:', err);
-      setTeams(fallbackTeams);
     }
     setIsLoading(false);
   };
@@ -98,7 +91,7 @@ export const Teams: React.FC = () => {
             description: data.description,
             lead_id: data.lead_id,
             lead_name: lead?.full_name || 'Assigned Lead',
-            members_count: 1,
+            members_count: 0,
           };
           setTeams((prev) => [newTeam, ...prev]);
         }
@@ -111,7 +104,7 @@ export const Teams: React.FC = () => {
         name: teamName.trim(),
         description: teamDesc.trim(),
         lead_name: 'Assigned Team Lead',
-        members_count: 1,
+        members_count: 0,
       };
       setTeams((prev) => [newTeam, ...prev]);
     }
@@ -154,50 +147,76 @@ export const Teams: React.FC = () => {
         )}
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {teams.map((team) => (
-          <Card key={team.id} hoverEffect className="space-y-4 flex flex-col justify-between p-5 border border-slate-200/80">
-            <CardHeader className="p-0 space-y-3">
-              <div className="flex items-center justify-between">
-                <Badge variant="primary" dot>
-                  Active Team
-                </Badge>
-                <span className="text-xs font-bold text-slate-500">
-                  {team.members_count} Employees
-                </span>
-              </div>
-
-              <div className="flex items-center gap-3 pt-1">
-                <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-200/60 flex items-center justify-center text-brand-600 shrink-0 font-bold">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <CardTitle className="text-base font-bold text-slate-900 leading-tight">
-                    {team.name}
-                  </CardTitle>
-                </div>
-              </div>
-
-              <CardDescription className="text-xs leading-relaxed text-slate-500">
-                {team.description}
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent className="p-0 pt-3 space-y-3 border-t border-slate-100">
-              <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">
-                    Team Lead
+      {/* Grid or Empty State */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading teams...
+        </div>
+      ) : teams.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center text-slate-500 space-y-3">
+            <Inbox className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-base font-bold text-slate-800">No Teams Created Yet</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Managers and Admins can create teams (Hardware, Mechanical, Embedded, QA, etc.) to group employees and leads.
+            </p>
+            {isManagerOrAdmin && (
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Plus className="w-4 h-4" />}
+                onClick={() => setShowCreateModal(true)}
+              >
+                Create First Team
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {teams.map((team) => (
+            <Card key={team.id} hoverEffect className="space-y-4 flex flex-col justify-between p-5 border border-slate-200/80">
+              <CardHeader className="p-0 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="primary" dot>
+                    Active Team
+                  </Badge>
+                  <span className="text-xs font-bold text-slate-500">
+                    {team.members_count || 0} Employees
                   </span>
-                  <span className="font-bold text-slate-800">{team.lead_name}</span>
                 </div>
-                <Badge variant="neutral">Verified</Badge>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-200/60 flex items-center justify-center text-brand-600 shrink-0 font-bold">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold text-slate-900 leading-tight">
+                      {team.name}
+                    </CardTitle>
+                  </div>
+                </div>
+
+                <CardDescription className="text-xs leading-relaxed text-slate-500">
+                  {team.description}
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="p-0 pt-3 space-y-3 border-t border-slate-100">
+                <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">
+                      Team Lead
+                    </span>
+                    <span className="font-bold text-slate-800">{team.lead_name}</span>
+                  </div>
+                  <Badge variant="neutral">Verified</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Create Team Modal */}
       {showCreateModal && (
@@ -264,10 +283,3 @@ export const Teams: React.FC = () => {
     </div>
   );
 };
-
-const fallbackTeams: Team[] = [
-  { id: 't-1', name: 'Hardware Team', description: 'PCB Layout, RF Circuitry & Power Electronics', lead_name: 'Hardware Lead', members_count: 12 },
-  { id: 't-2', name: 'Mechanical Team', description: 'Enclosure CAD Design & Thermal Analysis', lead_name: 'Mechanical Lead', members_count: 9 },
-  { id: 't-3', name: 'Embedded Team', description: 'Microcontroller RTOS Firmware & Device Drivers', lead_name: 'Firmware Lead', members_count: 14 },
-  { id: 't-4', name: 'Quality Assurance (QA)', description: 'Hardware EMI/EMC & Reliability Testing', lead_name: 'QA Lead', members_count: 8 },
-];

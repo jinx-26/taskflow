@@ -5,7 +5,7 @@ import { Announcement, ChatMessage } from '../types';
  * Fetch all company-wide announcements
  */
 export const fetchAnnouncements = async (): Promise<Announcement[]> => {
-  if (!isSupabaseConfigured) return getMockAnnouncements();
+  if (!isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase
@@ -14,8 +14,8 @@ export const fetchAnnouncements = async (): Promise<Announcement[]> => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.warn('Error fetching announcements, using fallback:', error.message);
-      return getMockAnnouncements();
+      console.warn('Error fetching announcements:', error.message);
+      return [];
     }
 
     return (data || []).map((a) => ({
@@ -31,7 +31,7 @@ export const fetchAnnouncements = async (): Promise<Announcement[]> => {
     }));
   } catch (err) {
     console.error('Failed to fetch announcements:', err);
-    return getMockAnnouncements();
+    return [];
   }
 };
 
@@ -135,23 +135,3 @@ export const sendChannelMessage = async (
     return null;
   }
 };
-
-// Fallback Mock Data for demo mode
-const getMockAnnouncements = (): Announcement[] => [
-  {
-    id: 'ann-1',
-    title: '5G Telecom Hardware Prototype Release - Target Date Locked',
-    content: 'The WSS Division has locked the final PCB layout for the 5G Outdoor Unit. All team leads please review your task dependencies.',
-    author_name: 'Jignesh Giri (WSS Department Manager)',
-    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    attachment_name: '5G_Outdoor_Unit_Spec_v2.pdf',
-    attachment_url: '#',
-  },
-  {
-    id: 'ann-2',
-    title: 'QA Environmental Testing Lab Schedule Update',
-    content: 'EMI/EMC Testing Chamber B is open for hardware qualification testing from 09:00 AM tomorrow.',
-    author_name: 'QA & Compliance Lead',
-    created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-  },
-];

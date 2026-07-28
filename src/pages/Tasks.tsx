@@ -17,22 +17,29 @@ import {
   ListFilter,
   UserCheck,
   Building,
+  UserPlus,
+  Check,
+  X,
+  Sparkles,
 } from 'lucide-react';
-import { TaskPlaceholder } from '../types';
+import { TaskPlaceholder, CollaborationRequest } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchLiveTasks } from '../services/taskService';
+import { fetchLiveTasks, respondToInvite } from '../services/taskService';
 
 export const Tasks: React.FC = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [taskList, setTaskList] = useState<TaskPlaceholder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'assignedToMe' | 'all'>('assignedToMe');
   const [viewMode, setViewMode] = useState<'board' | 'table'>('board');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Modals & Action Message State
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskPlaceholder | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [actionMsg, setActionMsg] = useState('');
 
   const loadTasks = async () => {
     setIsLoading(true);
@@ -62,13 +69,51 @@ export const Tasks: React.FC = () => {
     }
   }, []);
 
+  // Collect all pending co-assignment invitations for the logged in user
+  const myPendingInvites: Array<{ task: TaskPlaceholder; invite: CollaborationRequest }> = [];
+  if (user) {
+    taskList.forEach((t) => {
+      if (Array.isArray(t.pendingInvitations)) {
+        t.pendingInvitations.forEach((inv) => {
+          const matchId = inv.targetUserId === user.id;
+          const matchName = profile?.full_name && inv.targetUserEmail?.toLowerCase() === profile.full_name.toLowerCase();
+          if ((matchId || matchName) && inv.status === 'Pending') {
+            myPendingInvites.push({ task: t, invite: inv });
+          }
+        });
+      }
+    });
+  }
+
+  const handleRespondToInvite = async (
+    taskId: string,
+    inviteId: string,
+    accept: boolean,
+    taskTitle: string
+  ) => {
+    if (!profile) return;
+
+    const success = await respondToInvite(taskId, inviteId, profile, accept);
+    if (success) {
+      setActionMsg(
+        accept
+          ? `Accepted co-assignment for "${taskTitle}"! Added to your My Tasks list.`
+          : `Declined co-assignment invitation.`
+      );
+      setTimeout(() => setActionMsg(''), 4000);
+      loadTasks();
+    }
+  };
+
   const filteredTasks = taskList.filter((t) => {
     if (t.isDeleted) return false;
 
-    // Filter by assigned user
+    // Filter by assigned user (primary assignee or co-assignee)
     if (filterMode === 'assignedToMe' && user?.id) {
       const isPrimary = t.assignee?.id === user.id;
-      const isCoAssignee = t.coAssignees?.some((ca) => ca.id === user.id);
+      const isCoAssignee = t.coAssignees?.some(
+        (ca) => ca.id === user.id || (profile?.full_name && ca.name === profile.full_name)
+      );
       if (!isPrimary && !isCoAssignee) return false;
     }
 
@@ -86,7 +131,7 @@ export const Tasks: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200">
-      {/* Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
         <div>
           <div className="flex items-center gap-2">
@@ -116,6 +161,69 @@ export const Tasks: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {actionMsg && (
+        <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 flex items-center justify-between">
+          <span>{actionMsg}</span>
+          <button onClick={() => setActionMsg('')} className="text-emerald-600 hover:text-emerald-800">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* PENDING CO-ASSIGNMENT INVITATIONS BANNER */}
+      {myPendingInvites.length > 0 && (
+        <Card className="bg-amber-50/80 border-amber-200 p-4 space-y-3">
+          <div className="flex items-center gap-2 border-b border-amber-200/60 pb-2">
+            <UserPlus className="w-5 h-5 text-amber-700" />
+            <h3 className="text-sm font-extrabold text-amber-900">
+              Pending Co-Assignment Invitations ({myPendingInvites.length})
+            </h3>
+          </div>
+
+          <div className="space-y-2">
+            {myPendingInvites.map(({ task, invite }) => (
+              <div
+                key={invite.id}
+                className="p-3 bg-white rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-soft-xs"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                      {task.code}
+                    </span>
+                    <span className="text-xs font-bold text-slate-900">{task.title}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Invited by <strong className="text-slate-800">{invite.invitedByName}</strong> to collaborate on this task.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs text-slate-600 hover:bg-slate-100"
+                    leftIcon={<X className="w-3.5 h-3.5 text-slate-500" />}
+                    onClick={() => handleRespondToInvite(task.id, invite.id, false, task.title)}
+                  >
+                    Decline
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 border-none text-white font-bold"
+                    leftIcon={<Check className="w-3.5 h-3.5" />}
+                    onClick={() => handleRespondToInvite(task.id, invite.id, true, task.title)}
+                  >
+                    Accept & Add to My Tasks
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Toolbar & View Toggles */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
