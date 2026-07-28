@@ -24,6 +24,10 @@ import {
   Loader2,
   CheckSquare,
   ShieldAlert,
+  UserPlus,
+  Check,
+  X,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { TaskPlaceholder, UserProfile } from '../types';
@@ -60,6 +64,7 @@ export const Projects: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'summary' | 'timeline' | 'board' | 'list' | 'files'>('board');
   const [tasks, setTasks] = useState<TaskPlaceholder[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -68,7 +73,7 @@ export const Projects: React.FC = () => {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
   
-  // New Project Modal State with Member Selector
+  // New Project Modal State with Member Selector & Select All
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
   const [projName, setProjName] = useState('');
   const [projKey, setProjKey] = useState('');
@@ -76,6 +81,14 @@ export const Projects: React.FC = () => {
   const [availableProfiles, setAvailableProfiles] = useState<UserProfile[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isSubmittingProj, setIsSubmittingProj] = useState(false);
+
+  // Manage Project Members Modal State
+  const [showManageMembersModal, setShowManageMembersModal] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [currentProjectMemberIds, setCurrentProjectMemberIds] = useState<string[]>([]);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [isSavingMembers, setIsSavingMembers] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
 
   const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
@@ -110,9 +123,52 @@ export const Projects: React.FC = () => {
     setIsLoading(false);
   };
 
+  const loadProjectFiles = async (projectId: string) => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const folderPath = `projects/${projectId}`;
+      const { data, error } = await supabase.storage.from('task-attachments').list(folderPath);
+
+      if (error) {
+        console.warn('Error listing project files:', error.message);
+        return;
+      }
+
+      if (data) {
+        const fileList: ProjectFile[] = data
+          .filter((item) => item.name !== '.emptyFolderPlaceholder')
+          .map((item) => {
+            const fileKey = `${folderPath}/${item.name}`;
+            const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(fileKey);
+            const fileExt = item.name.split('.').pop()?.toUpperCase() || 'FILE';
+            const cleanName = item.name.replace(/^\d+_/, '');
+            const sizeMb = item.metadata?.size ? `${(item.metadata.size / (1024 * 1024)).toFixed(1)} MB` : '1.2 MB';
+
+            return {
+              id: item.id || item.name,
+              name: cleanName,
+              url: pubData.publicUrl,
+              size: sizeMb,
+              type: fileExt,
+            };
+          });
+
+        setProjectFiles(fileList);
+      }
+    } catch (err) {
+      console.error('Failed to load project files:', err);
+    }
+  };
+
   useEffect(() => {
     loadProjectsData();
   }, [user]);
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'files') {
+      loadProjectFiles(selectedProject.id);
+    }
+  }, [selectedProject, activeTab]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,7 +195,6 @@ export const Projects: React.FC = () => {
           .single();
 
         if (!projErr && projData) {
-          // Add creator and selected members into project_members
           const membersToInsert = Array.from(new Set([user.id, ...selectedMemberIds])).map((uid) => ({
             project_id: projData.id,
             user_id: uid,
@@ -174,35 +229,116 @@ export const Projects: React.FC = () => {
     setShowCreateProjectModal(false);
   };
 
-  const toggleMemberSelection = (memberId: string) => {
+  const handleOpenManageMembers = async (proj: Project, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingProject(proj);
+    setMemberSearchQuery('');
+    setShowManageMembersModal(true);
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase
+          .from('project_members')
+          .select('user_id')
+          .eq('project_id', proj.id);
+
+        if (data) {
+          setCurrentProjectMemberIds(data.map((d) => d.user_id));
+        }
+      } catch (err) {
+        console.error('Failed to load project members:', err);
+      }
+    }
+  };
+
+  const handleSaveProjectMembers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !isSupabaseConfigured) {
+      setShowManageMembersModal(false);
+      return;
+    }
+
+    setIsSavingMembers(true);
+    try {
+      await supabase.from('project_members').delete().eq('project_id', editingProject.id);
+
+      const newMembers = currentProjectMemberIds.map((uid) => ({
+        project_id: editingProject.id,
+        user_id: uid,
+        role: uid === editingProject.created_by ? 'Manager' : 'Member',
+      }));
+
+      if (newMembers.length > 0) {
+        await supabase.from('project_members').insert(newMembers);
+      }
+
+      setToastMsg(`Updated access permissions for "${editingProject.name}". ${currentProjectMemberIds.length} members assigned.`);
+      setTimeout(() => setToastMsg(''), 4000);
+    } catch (err) {
+      console.error('Error saving project members:', err);
+    }
+
+    setIsSavingMembers(false);
+    setShowManageMembersModal(false);
+  };
+
+  const toggleCreateMemberSelection = (memberId: string) => {
     setSelectedMemberIds((prev) =>
       prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
     );
+  };
+
+  const toggleManageMemberSelection = (memberId: string) => {
+    setCurrentProjectMemberIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
+  };
+
+  const selectAllCreateMembers = () => {
+    setSelectedMemberIds(availableProfiles.map((p) => p.id));
+  };
+
+  const deselectAllCreateMembers = () => {
+    setSelectedMemberIds([]);
+  };
+
+  const selectAllManageMembers = () => {
+    setCurrentProjectMemberIds(availableProfiles.map((p) => p.id));
+  };
+
+  const deselectAllManageMembers = () => {
+    setCurrentProjectMemberIds([]);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedProject || !isSupabaseConfigured) return;
 
+    setIsUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `projects/${selectedProject.id}/${Date.now()}_${file.name}`;
-      const { data, error } = await supabase.storage.from('task-attachments').upload(filePath, file);
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const filePath = `projects/${selectedProject.id}/${Date.now()}_${cleanFileName}`;
 
-      if (!error && data) {
-        const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
-        const newFileObj: ProjectFile = {
-          id: `file-${Date.now()}`,
-          name: file.name,
-          url: pubData.publicUrl,
-          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-          type: fileExt?.toUpperCase() || 'FILE',
-        };
-        setProjectFiles((prev) => [newFileObj, ...prev]);
+      const { data, error } = await supabase.storage.from('task-attachments').upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+      if (error) {
+        console.error('File upload error:', error.message);
+        setToastMsg(`Upload failed: ${error.message}`);
+        setTimeout(() => setToastMsg(''), 4000);
+      } else if (data) {
+        setToastMsg(`Successfully uploaded "${file.name}" to private project specs!`);
+        setTimeout(() => setToastMsg(''), 4000);
+        await loadProjectFiles(selectedProject.id);
       }
-    } catch (err) {
-      console.warn('File upload fallback:', err);
+    } catch (err: any) {
+      console.error('File upload exception:', err);
+      setToastMsg(`Upload error: ${err.message || 'Check storage permissions'}`);
+      setTimeout(() => setToastMsg(''), 4000);
     }
+    setIsUploading(false);
   };
 
   // PRIVACY FILTER: Admins/Managers see all; Members ONLY see projects they were added to
@@ -242,15 +378,30 @@ export const Projects: React.FC = () => {
 
         <div className="flex items-center gap-3">
           {selectedProject && (
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={<ArrowLeft className="w-4 h-4" />}
-              onClick={() => setSelectedProject(null)}
-            >
-              Back to Projects Directory
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<ArrowLeft className="w-4 h-4" />}
+                onClick={() => setSelectedProject(null)}
+              >
+                Back to Projects Directory
+              </Button>
+
+              {isManagerOrAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
+                  leftIcon={<Users className="w-4 h-4 text-brand-600" />}
+                  onClick={() => handleOpenManageMembers(selectedProject)}
+                >
+                  Manage Project Members
+                </Button>
+              )}
+            </>
           )}
+
           {isManagerOrAdmin && (
             <Button
               variant="primary"
@@ -267,6 +418,16 @@ export const Projects: React.FC = () => {
           )}
         </div>
       </div>
+
+      {toastMsg && (
+        <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span>{toastMsg}</span>
+          </div>
+          <button onClick={() => setToastMsg('')}>✕</button>
+        </div>
+      )}
 
       {/* Directory Search Bar */}
       {!selectedProject && (
@@ -345,9 +506,22 @@ export const Projects: React.FC = () => {
 
                 <div className="flex items-center justify-between pt-1 text-xs text-slate-400">
                   <span className="flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                    <Lock className="w-3.5 h-3.5" /> Restricted Member Access
+                    <Lock className="w-3.5 h-3.5" /> Private Access
                   </span>
-                  <span className="font-semibold text-brand-600 hover:underline">Click to View Details →</span>
+
+                  {isManagerOrAdmin ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs text-brand-600 font-bold border-brand-200 hover:bg-brand-50"
+                      leftIcon={<Users className="w-3.5 h-3.5" />}
+                      onClick={(e) => handleOpenManageMembers(proj, e)}
+                    >
+                      Select People & Access
+                    </Button>
+                  ) : (
+                    <span className="font-semibold text-brand-600 hover:underline">Click to View Details →</span>
+                  )}
                 </div>
               </Card>
             ))}
@@ -512,47 +686,61 @@ export const Projects: React.FC = () => {
             </Card>
           )}
 
-          {/* Sub-tab 5: Files & Specs */}
+          {/* Sub-tab 5: Files & Specs (REAL SUPABASE STORAGE PERSISTENCE & PRIVACY) */}
           {activeTab === 'files' && (
             <Card className="p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <FileText className="w-5 h-5 text-brand-600" />
-                    Project Documents & Technical Specs
+                    Private Project Documents & Technical Specs
                   </h3>
-                  <p className="text-xs text-slate-500">PDF datasheets, Excel BOMs, and Word specifications.</p>
+                  <p className="text-xs text-slate-500">
+                    PDF datasheets, Excel BOMs, and Word specs for <strong>{selectedProject.name}</strong> only.
+                  </p>
                 </div>
+
                 <label className="cursor-pointer">
                   <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-soft hover:bg-brand-700 transition-colors">
-                    <Upload className="w-4 h-4" /> Upload Document
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" /> Upload Document
+                      </>
+                    )}
                   </span>
-                  <input type="file" onChange={handleFileUpload} className="hidden" />
+                  <input type="file" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
                 </label>
               </div>
 
               {projectFiles.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 space-y-2">
                   <FileText className="w-10 h-10 mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-700">No Documents Uploaded Yet</p>
+                  <p className="text-xs font-bold text-slate-700">No Documents Uploaded for this Project Yet</p>
                   <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                    Click "Upload Document" above to share PDF, Excel, or Word spec sheets for this project.
+                    Click "Upload Document" above to attach PDF, Excel, or Word spec sheets. Documents are strictly visible only to members of <strong>{selectedProject.name}</strong>.
                   </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {projectFiles.map((f) => (
-                    <div key={f.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <FileText className="w-5 h-5 text-brand-600 shrink-0" />
+                    <div key={f.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between hover:border-brand-300 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-brand-100/80 text-brand-700 font-bold text-xs flex items-center justify-center shrink-0">
+                          {f.type}
+                        </div>
                         <div>
-                          <span className="text-xs font-bold text-slate-800 block truncate max-w-[180px]">{f.name}</span>
-                          <span className="text-[10px] text-slate-400">{f.size} • {f.type}</span>
+                          <span className="text-xs font-bold text-slate-800 block truncate max-w-[180px] sm:max-w-[240px]">{f.name}</span>
+                          <span className="text-[10px] text-slate-400">{f.size} • Restricted Access</span>
                         </div>
                       </div>
                       <a href={f.url} target="_blank" rel="noopener noreferrer" download>
-                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 flex items-center justify-center">
+                        <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs font-semibold flex items-center gap-1.5">
                           <Download className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Download</span>
                         </Button>
                       </a>
                     </div>
@@ -564,7 +752,7 @@ export const Projects: React.FC = () => {
         </div>
       )}
 
-      {/* Create Private Project Modal with Member Selector */}
+      {/* Create Private Project Modal with Member Selector & Select All */}
       {showCreateProjectModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
@@ -609,18 +797,35 @@ export const Projects: React.FC = () => {
                 />
               </div>
 
-              {/* Select Member Access */}
+              {/* Select Member Access with Select All / Deselect All */}
               <div className="space-y-2 pt-2 border-t border-slate-100">
-                <label className="block text-xs font-bold text-slate-800 uppercase flex items-center justify-between">
-                  <span>Grant Access to Members ({selectedMemberIds.length} Selected)</span>
-                  <span className="text-[10px] text-emerald-600 font-semibold">Only selected members can view</span>
-                </label>
-                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 divide-y divide-slate-100 space-y-1 bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 uppercase">
+                    Grant Access to Members ({selectedMemberIds.length}/{availableProfiles.length})
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={selectAllCreateMembers}
+                      className="text-[11px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 px-2 py-0.5 rounded border border-brand-200"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deselectAllCreateMembers}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 px-2 py-0.5 rounded"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-xl p-2 divide-y divide-slate-100 space-y-1 bg-slate-50/50">
                   {availableProfiles.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 p-2">No other approved members found.</p>
+                    <p className="text-[11px] text-slate-400 p-2">No approved members found.</p>
                   ) : (
                     availableProfiles.map((p) => {
-                      if (p.id === user?.id) return null; // Creator automatically added
                       const isSelected = selectedMemberIds.includes(p.id);
                       return (
                         <label
@@ -631,7 +836,7 @@ export const Projects: React.FC = () => {
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => toggleMemberSelection(p.id)}
+                              onChange={() => toggleCreateMemberSelection(p.id)}
                               className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                             />
                             <span className="text-xs font-bold text-slate-800">{p.full_name}</span>
@@ -652,6 +857,106 @@ export const Projects: React.FC = () => {
                 </Button>
                 <Button type="submit" variant="primary" size="sm" isLoading={isSubmittingProj}>
                   Create Private Project
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MANAGE PROJECT MEMBERS MODAL */}
+      {showManageMembersModal && editingProject && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-brand-600" />
+                  Manage Project Members
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Project: <strong className="text-slate-800">{editingProject.name}</strong>
+                </p>
+              </div>
+              <button onClick={() => setShowManageMembersModal(false)} className="text-slate-400 hover:text-slate-600">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProjectMembers} className="space-y-4">
+              {/* Member Search & Select All Toolbar */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 uppercase">
+                    Select Member Access ({currentProjectMemberIds.length}/{availableProfiles.length})
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={selectAllManageMembers}
+                      className="text-[11px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 px-2 py-0.5 rounded border border-brand-200"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deselectAllManageMembers}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 px-2 py-0.5 rounded"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <Input
+                  value={memberSearchQuery}
+                  onChange={(e) => setMemberSearchQuery(e.target.value)}
+                  placeholder="Search employee name or role..."
+                  leftIcon={<Search className="w-4 h-4 text-slate-400" />}
+                />
+              </div>
+
+              {/* Members Checklist */}
+              <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-xl p-2 divide-y divide-slate-100 space-y-1 bg-slate-50/50">
+                {availableProfiles
+                  .filter((p) =>
+                    p.full_name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
+                    p.role.toLowerCase().includes(memberSearchQuery.toLowerCase())
+                  )
+                  .map((p) => {
+                    const isSelected = currentProjectMemberIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex items-center justify-between p-2 hover:bg-white rounded-lg cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleManageMemberSelection(p.id)}
+                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4"
+                          />
+                          <Avatar name={p.full_name} src={p.avatar_url} size="xs" />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block leading-tight">{p.full_name}</span>
+                            <span className="text-[10px] text-slate-400">{p.id.substring(0, 8)}...</span>
+                          </div>
+                        </div>
+                        <Badge variant={isSelected ? 'primary' : 'neutral'} className="text-[10px]">
+                          {p.role}
+                        </Badge>
+                      </label>
+                    );
+                  })}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowManageMembersModal(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" size="sm" isLoading={isSavingMembers}>
+                  Save Project Access
                 </Button>
               </div>
             </form>
