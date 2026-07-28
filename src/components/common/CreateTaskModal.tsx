@@ -41,7 +41,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*, teams(name)')
+          .select('*')
           .eq('status', 'Approved')
           .order('full_name', { ascending: true });
 
@@ -52,7 +52,6 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             role: d.role,
             status: d.status,
             avatar_url: d.avatar_url,
-            team_name: d.teams?.name || undefined,
           }));
           setWorkspaceMembers(members);
           if (members.length > 0 && selectedAssigneeIds.length === 0) {
@@ -93,163 +92,168 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     );
   };
 
+  const handleSelectAll = () => {
+    setAssignAll(true);
+    setSelectedAssigneeIds(workspaceMembers.map((m) => m.id));
+  };
+
+  const handleDeselectAll = () => {
+    setAssignAll(false);
+    setSelectedAssigneeIds([]);
+  };
+
   const filteredMembers = workspaceMembers.filter((m) =>
-    m.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
+    m.full_name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+    m.role.toLowerCase().includes(userSearchQuery.toLowerCase())
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !user) return;
+
+    if (selectedAssigneeIds.length === 0 && !assignAll) {
+      alert('Please select at least one assignee for this task.');
+      return;
+    }
 
     setIsSubmitting(true);
+    const taskCode = `TSK-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const primaryAssignee = workspaceMembers.find((m) => m.id === selectedAssigneeIds[0]) || {
-      id: user?.id || 'self',
-      full_name: profile?.full_name || user?.email?.split('@')[0] || 'Employee',
-      avatar_url: '',
+    const primaryAssigneeObj = workspaceMembers.find((m) => m.id === selectedAssigneeIds[0]) || {
+      id: user.id,
+      full_name: profile?.full_name || 'Assigned Member',
+      avatar_url: profile?.avatar_url,
     };
 
-    const coAssignees = workspaceMembers
-      .filter((m) => selectedAssigneeIds.slice(1).includes(m.id))
+    const coAssigneesList = workspaceMembers
+      .filter((m) => selectedAssigneeIds.includes(m.id) && m.id !== primaryAssigneeObj.id)
       .map((m) => ({
         id: m.id,
         name: m.full_name,
         avatar: m.avatar_url,
         role: m.role,
-        teamName: m.team_name,
       }));
 
-    const formattedDate = dueDate
-      ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : 'Aug 15, 2026';
-
-    const creatorName = profile?.full_name || user?.email?.split('@')[0] || 'Employee';
-
-    const newTask = {
-      id: `task-${Date.now()}`,
-      code: `TSK-${Math.floor(100 + Math.random() * 900)}`,
+    const newTaskData = {
+      code: taskCode,
       title: title.trim(),
       description: description.trim(),
-      issueType,
-      project: isStandalone ? 'Standalone Task' : project,
+      issue_type: issueType,
+      project: isStandalone ? 'Standalone Task' : project.trim(),
       priority,
       status: 'Todo',
-      assignee: {
-        id: primaryAssignee.id,
-        name: primaryAssignee.full_name,
-        avatar: primaryAssignee.avatar_url,
-      },
-      coAssignees: assignAll ? workspaceMembers.map((m) => ({ id: m.id, name: m.full_name })) : coAssignees,
-      createdBy: creatorName,
-      dueDate: formattedDate,
-      partNumber,
-      hardwareRev,
-      subtasks: [],
-      activityLog: [
+      assignee_id: primaryAssigneeObj.id,
+      assignee_name: primaryAssigneeObj.full_name,
+      assignee_avatar: primaryAssigneeObj.avatar_url || '',
+      co_assignees: coAssigneesList,
+      part_number: partNumber.trim() || null,
+      hardware_rev: hardwareRev.trim() || null,
+      created_by: user.id,
+      due_date: dueDate,
+      activity_log: [
         {
           id: `log-${Date.now()}`,
-          userName: creatorName,
-          action: 'created task',
-          timestamp: 'Just now',
+          userName: profile?.full_name || 'Member',
+          action: `created task ${taskCode}.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ],
     };
 
     if (isSupabaseConfigured) {
       try {
-        await supabase.from('tasks').insert([
-          {
-            code: newTask.code,
-            title: newTask.title,
-            description: newTask.description,
-            issue_type: newTask.issueType,
-            project: newTask.project,
-            priority: newTask.priority,
-            status: 'Todo',
-            assignee_name: primaryAssignee.full_name,
-            assignee_id: primaryAssignee.id,
-            assignee_avatar: primaryAssignee.avatar_url,
-            co_assignees: newTask.coAssignees,
-            created_by: user?.id,
-            due_date: newTask.dueDate,
-            part_number: partNumber,
-            hardware_rev: hardwareRev,
-            activity_log: newTask.activityLog,
-          },
-        ]);
+        const { data, error } = await supabase.from('tasks').insert([newTaskData]).select().single();
+
+        if (error) throw error;
+
+        // Notify assignees
+        selectedAssigneeIds.forEach(async (targetId) => {
+          const targetMem = workspaceMembers.find((m) => m.id === targetId);
+          if (targetMem) {
+            await sendNotification({
+              recipientEmail: targetMem.full_name,
+              senderName: profile?.full_name || 'Member',
+              title: `New Task Assignment: ${taskCode}`,
+              message: `You were assigned to task "${title.trim()}".`,
+              taskCode,
+              type: 'assignment',
+            });
+          }
+        });
+
+        if (onTaskCreated && data) onTaskCreated(data);
       } catch (err) {
-        console.error('Failed to insert task to Supabase:', err);
+        console.error('Error inserting task:', err);
       }
+    } else {
+      if (onTaskCreated) onTaskCreated(newTaskData);
     }
 
+    setSuccessMsg(`Task ${taskCode} created successfully!`);
     setIsSubmitting(false);
-    setSuccessMsg('Task created successfully!');
 
     setTimeout(() => {
       setSuccessMsg('');
-      if (onTaskCreated) onTaskCreated(newTask);
+      setTitle('');
+      setDescription('');
       onClose();
-    }, 600);
+    }, 1200);
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+        {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-brand-600" />
-            <h3 className="text-lg font-extrabold text-slate-900">Create Task / Work Order</h3>
+            <div className="w-8 h-8 rounded-xl bg-brand-50 border border-brand-200/60 flex items-center justify-center text-brand-600 font-bold">
+              <CheckSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-lg font-extrabold text-slate-900 leading-tight">Create & Assign New Task</h3>
+              <p className="text-xs text-slate-500">Assign to single or multiple team members</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {successMsg && (
-          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200">
-            {successMsg}
+          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span>{successMsg}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Task Title */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Task Title *</label>
-            <Input
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. PCB Component Soldering & Thermal Test"
-            />
-          </div>
-
-          {/* Standalone vs Project Toggle */}
-          <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-700">Task Context:</span>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-              <input
-                type="radio"
-                checked={isStandalone}
-                onChange={() => setIsStandalone(true)}
-                className="text-brand-600 focus:ring-brand-500"
-              />
-              Standalone Task (Individual Work)
-            </label>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-              <input
-                type="radio"
-                checked={!isStandalone}
-                onChange={() => setIsStandalone(false)}
-                className="text-brand-600 focus:ring-brand-500"
-              />
-              Belongs to Project
-            </label>
+          {/* Task Type Toggle */}
+          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsStandalone(true)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                isStandalone ? 'bg-white text-brand-700 shadow-soft-xs' : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Standalone Task
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsStandalone(false)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                !isStandalone ? 'bg-white text-brand-700 shadow-soft-xs' : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Project Task
+            </button>
           </div>
 
           {!isStandalone && (
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Project</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Project Name *</label>
               <Input
+                required
                 value={project}
                 onChange={(e) => setProject(e.target.value)}
                 placeholder="e.g. WSS 5G Outdoor Unit Development"
@@ -257,29 +261,32 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             </div>
           )}
 
-          {/* Issue Type & Priority */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Task Title *</label>
+            <Input
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. PCB Schematics & RF Layout Review"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Issue Category</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Category / Issue Type</label>
               <select
                 value={issueType}
                 onChange={(e) => setIssueType(e.target.value as IssueType)}
-                className="w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-brand-500"
               >
-                {[
-                  'PCB Layout',
-                  'Hardware Design',
-                  'Mechanical CAD',
-                  'Firmware Flash',
-                  'QA & Compliance',
-                  'Component Procurement',
-                  'Field Issue',
-                  'General Task',
-                ].map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
+                <option value="General Task">General Task</option>
+                <option value="PCB Layout">PCB Layout</option>
+                <option value="Hardware Design">Hardware Design</option>
+                <option value="Mechanical CAD">Mechanical CAD</option>
+                <option value="Firmware Flash">Firmware Flash</option>
+                <option value="QA & Compliance">QA & Compliance</option>
+                <option value="Component Procurement">Component Procurement</option>
+                <option value="Field Issue">Field Issue</option>
               </select>
             </div>
 
@@ -288,89 +295,94 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
-                className="w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-brand-500"
               >
-                <option value="Urgent">🔴 Urgent</option>
-                <option value="High">🟠 High</option>
-                <option value="Medium">🟡 Medium</option>
-                <option value="Low">🟢 Low</option>
+                <option value="Urgent">Urgent</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
               </select>
             </div>
           </div>
 
-          {/* Dynamic Assignees Selector (Zero Hardcoded Names) */}
-          <div className="space-y-2">
+          {/* Searchable Multi-Assignee Selection List with Select All */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-700 uppercase">
-                Assignees & Co-Assignees
+              <label className="text-xs font-bold text-slate-800 uppercase">
+                Assign to Employees ({selectedAssigneeIds.length} Selected)
               </label>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-brand-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={assignAll}
-                  onChange={(e) => {
-                    setAssignAll(e.target.checked);
-                    if (e.target.checked) setSelectedAssigneeIds(workspaceMembers.map((m) => m.id));
-                  }}
-                  className="rounded text-brand-600 focus:ring-brand-500"
-                />
-                Assign to All Employees
-              </label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="text-[11px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 px-2 py-0.5 rounded border border-brand-200"
+                >
+                  Assign to All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeselectAll}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 px-2 py-0.5 rounded"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
 
-            {!assignAll && (
-              <div className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50/50 max-h-48 overflow-y-auto">
-                <Input
-                  value={userSearchQuery}
-                  onChange={(e) => setUserSearchQuery(e.target.value)}
-                  placeholder="Search employee name or team..."
-                  className="text-xs mb-2"
-                />
+            <Input
+              value={userSearchQuery}
+              onChange={(e) => setUserSearchQuery(e.target.value)}
+              placeholder="Search member name or team role..."
+              className="py-1.5 text-xs"
+            />
 
-                {filteredMembers.map((m) => {
-                  const isSelected = selectedAssigneeIds.includes(m.id);
-                  const displayBadge = m.role === 'Manager' ? 'Manager' : m.team_name || m.role;
-
+            <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 divide-y divide-slate-100 space-y-1 bg-slate-50/50">
+              {filteredMembers.length === 0 ? (
+                <p className="text-[11px] text-slate-400 p-2 text-center">No approved members found.</p>
+              ) : (
+                filteredMembers.map((m) => {
+                  const isChecked = selectedAssigneeIds.includes(m.id);
                   return (
-                    <div
+                    <label
                       key={m.id}
-                      onClick={() => toggleUserSelection(m.id)}
-                      className={`flex items-center justify-between p-2 rounded-xl text-xs font-medium cursor-pointer transition-colors ${
-                        isSelected ? 'bg-brand-50 text-brand-900 border border-brand-200' : 'bg-white hover:bg-slate-100 text-slate-700'
-                      }`}
+                      className="flex items-center justify-between p-1.5 hover:bg-white rounded-lg cursor-pointer transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900">{m.full_name}</span>
-                        <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                          ({displayBadge})
-                        </span>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleUserSelection(m.id)}
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4"
+                        />
+                        <span className="text-xs font-bold text-slate-800">{m.full_name}</span>
                       </div>
-                      {isSelected && <Check className="w-4 h-4 text-brand-600" />}
-                    </div>
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                        {m.role}
+                      </span>
+                    </label>
                   );
-                })}
-              </div>
-            )}
+                })
+              )}
+            </div>
           </div>
 
-          {/* Description */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description & Requirements</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description & Instructions</label>
             <textarea
-              rows={3}
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter work details, hardware specifications, component IDs..."
-              className="w-full rounded-xl border border-slate-200 p-2.5 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
+              placeholder="Detailed work breakdown, PCB requirements, component part numbers..."
+              className="w-full rounded-xl border border-slate-300 p-2.5 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" size="sm" isLoading={isSubmitting}>
-              Create Task
+              Create & Assign Task
             </Button>
           </div>
         </form>
