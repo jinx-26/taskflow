@@ -6,18 +6,18 @@ import {
   CheckSquare,
   Users,
   Calendar,
-  Bell,
+  Megaphone,
   Settings,
   ChevronLeft,
   ChevronRight,
   Layers,
-  Sparkles,
   ShieldCheck,
   X,
+  Bell,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../hooks/useAuth';
-import { fetchLiveNotifications, NotificationItem } from '../../services/notificationService';
+import { fetchLiveNotifications } from '../../services/notificationService';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 interface SidebarProps {
@@ -30,10 +30,10 @@ interface SidebarProps {
 export const navigationItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Projects', path: '/projects', icon: FolderKanban },
-  { name: 'Tasks', path: '/tasks', icon: CheckSquare },
+  { name: 'My Tasks', path: '/tasks', icon: CheckSquare },
   { name: 'Teams', path: '/teams', icon: Users },
   { name: 'Calendar', path: '/calendar', icon: Calendar },
-  { name: 'Notifications', path: '/notifications', icon: Bell },
+  { name: 'Announcements', path: '/announcements', icon: Megaphone },
   { name: 'Settings', path: '/settings', icon: Settings },
 ];
 
@@ -89,12 +89,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!collapsed && (
             <div className="flex flex-col truncate">
               <span className="text-sm font-bold text-slate-900 tracking-tight truncate flex items-center gap-1.5">
-                TaskFlow
+                HFCL TaskFlow
                 <span className="text-[10px] font-semibold uppercase bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded border border-brand-200/60">
-                  Pro
+                  Enterprise
                 </span>
               </span>
-              <span className="text-xs text-slate-500 truncate">Enterprise Workspace</span>
+              <span className="text-xs text-slate-500 truncate">Hardware & Telecom Hub</span>
             </div>
           )}
         </div>
@@ -118,7 +118,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
-          const isNotifItem = item.path === '/notifications';
 
           return (
             <NavLink
@@ -144,92 +143,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!collapsed && (
                 <span className="flex-1 truncate">{item.name}</span>
               )}
-
-              {/* Dynamic Live Unread Notifications Badge */}
-              {!collapsed && isNotifItem && unreadCount > 0 && (
-                <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-brand-600 text-white shadow-soft-xs animate-in fade-in-50">
-                  {unreadCount}
-                </span>
-              )}
-
-              {/* Active Indicator bar */}
-              {isActive && (
-                <span className="absolute left-0 top-2 bottom-2 w-1 bg-brand-600 rounded-r-full" />
-              )}
             </NavLink>
           );
         })}
 
-        {/* Conditional Secret Admin Links */}
+        {/* SuperAdmin / Admin Control Link */}
         {isAdminOrSuper && (
-          <div className="pt-2 mt-2 border-t border-slate-100">
-            <div className={cn('px-2 mb-1.5 text-[10px] font-bold text-amber-600 uppercase tracking-wider', collapsed && 'text-center')}>
-              {collapsed ? '••' : 'Admin'}
+          <div className="pt-4 mt-4 border-t border-slate-100">
+            <div className={cn('px-2 mb-2 text-[11px] font-semibold text-amber-600 uppercase tracking-wider', collapsed && 'text-center')}>
+              {collapsed ? 'ADM' : 'Administration'}
             </div>
             <NavLink
-              to="/sys-admin-panel-k3m8"
+              to={isSuperAdmin ? '/super-admin' : '/admin'}
               onClick={() => onCloseMobile()}
               className={cn(
-                'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-amber-700 bg-amber-50/80 hover:bg-amber-100/80 transition-all',
+                'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-amber-700 bg-amber-50/70 hover:bg-amber-100/80 transition-all duration-150',
                 collapsed && 'justify-center px-0'
               )}
-              title={collapsed ? 'Admin Panel' : undefined}
+              title={collapsed ? (isSuperAdmin ? 'SuperAdmin Panel' : 'Admin Panel') : undefined}
             >
-              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
-              {!collapsed && <span>Admin Panel</span>}
-            </NavLink>
-          </div>
-        )}
-
-        {isSuperAdmin && (
-          <div className="pt-1">
-            <NavLink
-              to="/super-ctrl-sec-7x9q"
-              onClick={() => onCloseMobile()}
-              className={cn(
-                'group relative flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50/80 hover:bg-purple-100/80 transition-all',
-                collapsed && 'justify-center px-0'
+              <ShieldCheck className="w-5 h-5 shrink-0 text-amber-600" />
+              {!collapsed && (
+                <span className="flex-1 truncate font-semibold">
+                  {isSuperAdmin ? 'SuperAdmin Panel' : 'Admin Approvals'}
+                </span>
               )}
-              title={collapsed ? 'SuperAdmin Control' : undefined}
-            >
-              <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
-              {!collapsed && <span>SuperAdmin Center</span>}
             </NavLink>
           </div>
         )}
       </div>
 
-      {/* Footer / System Status */}
-      <div className="p-3 border-t border-slate-100">
-        {!collapsed ? (
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-slate-800">TaskFlow Sync v2.4</span>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-tight">
-              All systems operational. Realtime & Roles active.
-            </p>
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100" title="System operational" />
-          </div>
-        )}
-
-        {/* Desktop Collapse Toggle */}
+      {/* Collapse Desktop Toggle */}
+      <div className="hidden md:flex p-3 border-t border-slate-100 justify-end">
         <button
           onClick={onToggleCollapse}
-          className="hidden md:flex items-center gap-2 w-full mt-2 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+          className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4 mx-auto text-slate-400" />
-          ) : (
-            <>
-              <ChevronLeft className="w-4 h-4 text-slate-400" />
-              <span>Collapse Sidebar</span>
-            </>
-          )}
+          {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
         </button>
       </div>
     </div>
@@ -237,20 +188,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Desktop Persistent Sidebar */}
+      {/* Desktop Sidebar */}
       <aside
         className={cn(
-          'hidden md:block fixed left-0 top-0 bottom-0 z-30 transition-all duration-300 ease-in-out',
-          collapsed ? 'w-20' : 'w-64'
+          'hidden md:block fixed top-0 left-0 bottom-0 z-30 transition-all duration-300 ease-in-out',
+          collapsed ? 'w-16' : 'w-64'
         )}
       >
         {sidebarContent}
       </aside>
 
-      {/* Mobile Drawer Backdrop */}
+      {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+          className="md:hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm animate-in fade-in-50"
           onClick={onCloseMobile}
         />
       )}
@@ -258,7 +209,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile Drawer */}
       <aside
         className={cn(
-          'md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 bg-white transition-transform duration-300 ease-in-out shadow-soft-lg',
+          'md:hidden fixed top-0 left-0 bottom-0 z-50 w-64 transition-transform duration-300 ease-in-out',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >

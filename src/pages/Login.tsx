@@ -35,7 +35,13 @@ export const Login: React.FC = () => {
       const { error: authError } = await signIn(email, password);
       setIsLoading(false);
       if (authError) {
-        setError(authError.message || 'Failed to sign in. Please check your credentials.');
+        if (authError.message.toLowerCase().includes('email not confirmed')) {
+          setError(
+            'Email not confirmed in Supabase Auth. Turn OFF "Confirm email" in Supabase Dashboard (Auth -> Providers -> Email) or run Section 13 in supabase_v2_clean_schema.sql.'
+          );
+        } else {
+          setError(authError.message || 'Failed to sign in. Please check your credentials.');
+        }
       } else {
         navigate('/dashboard');
       }

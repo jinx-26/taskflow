@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { X, CheckSquare, User, Calendar, Tag, AlertCircle, FileText, Clock, Layers } from 'lucide-react';
+import { X, CheckSquare, User, Calendar, Tag, AlertCircle, FileText, Clock, Layers, Users, Check } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sendNotification } from '../../services/notificationService';
@@ -21,33 +21,42 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const { user, profile } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [issueType, setIssueType] = useState<IssueType>('Task');
-  const [project, setProject] = useState('Hardware Architecture');
-  const [assigneeName, setAssigneeName] = useState('');
+  const [issueType, setIssueType] = useState<IssueType>('General Task');
+  const [isStandalone, setIsStandalone] = useState(true);
+  const [project, setProject] = useState('General Task Hub');
   const [priority, setPriority] = useState<'Urgent' | 'High' | 'Medium' | 'Low'>('High');
-  const [dueDate, setDueDate] = useState('2026-07-30');
-  const [estimatedHours, setEstimatedHours] = useState<number>(8);
+  const [dueDate, setDueDate] = useState('2026-08-15');
+  const [partNumber, setPartNumber] = useState('');
+  const [hardwareRev, setHardwareRev] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  
   const [workspaceMembers, setWorkspaceMembers] = useState<UserProfile[]>([]);
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
+  const [assignAll, setAssignAll] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Load real workspace accounts from public.profiles (Excluding SuperAdmin & Admin)
   const loadWorkspaceMembers = async () => {
     try {
       if (isSupabaseConfigured) {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
-          .in('role', ['Manager', 'Lead', 'Member', 'Viewer'])
+          .select('*, teams(name)')
+          .eq('status', 'Approved')
           .order('full_name', { ascending: true });
 
         if (!error && data) {
-          const assignable = (data as UserProfile[]).filter(
-            (m) => m.role !== 'SuperAdmin' && m.role !== 'Admin' && !m.is_superadmin
-          );
-          setWorkspaceMembers(assignable);
-          if (assignable.length > 0 && !assigneeName) {
-            setAssigneeName(assignable[0].full_name);
+          const members: UserProfile[] = data.map((d: any) => ({
+            id: d.id,
+            full_name: d.full_name,
+            role: d.role,
+            status: d.status,
+            avatar_url: d.avatar_url,
+            team_name: d.teams?.name || undefined,
+          }));
+          setWorkspaceMembers(members);
+          if (members.length > 0 && selectedAssigneeIds.length === 0) {
+            setSelectedAssigneeIds([members[0].id]);
           }
           return;
         }
@@ -56,20 +65,16 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       console.warn('Could not load profiles for task modal:', err);
     }
 
-    // Default fallback
     if (user) {
-      const selfName = profile?.full_name || user.email?.split('@')[0] || 'Workspace Member';
-      setWorkspaceMembers([
-        {
-          id: user.id,
-          full_name: selfName,
-          role: profile?.role === 'Manager' || profile?.role === 'Lead' ? profile.role : 'Member',
-          status: 'Approved',
-        },
-      ]);
-      if (!assigneeName) {
-        setAssigneeName(selfName);
-      }
+      const selfName = profile?.full_name || user.email?.split('@')[0] || 'Employee';
+      const selfMember: UserProfile = {
+        id: user.id,
+        full_name: selfName,
+        role: profile?.role || 'Member',
+        status: 'Approved',
+      };
+      setWorkspaceMembers([selfMember]);
+      setSelectedAssigneeIds([user.id]);
     }
   };
 
@@ -81,24 +86,44 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
   if (!isOpen) return null;
 
+  const toggleUserSelection = (userId: string) => {
+    if (assignAll) setAssignAll(false);
+    setSelectedAssigneeIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const filteredMembers = workspaceMembers.filter((m) =>
+    m.full_name.toLowerCase().includes(userSearchQuery.toLowerCase())
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
     setIsSubmitting(true);
 
-    const selectedAssignee = workspaceMembers.find((m) => m.full_name === assigneeName) || {
+    const primaryAssignee = workspaceMembers.find((m) => m.id === selectedAssigneeIds[0]) || {
       id: user?.id || 'self',
-      full_name: assigneeName || 'Workspace Member',
-      role: 'Member',
+      full_name: profile?.full_name || user?.email?.split('@')[0] || 'Employee',
       avatar_url: '',
     };
 
+    const coAssignees = workspaceMembers
+      .filter((m) => selectedAssigneeIds.slice(1).includes(m.id))
+      .map((m) => ({
+        id: m.id,
+        name: m.full_name,
+        avatar: m.avatar_url,
+        role: m.role,
+        teamName: m.team_name,
+      }));
+
     const formattedDate = dueDate
       ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : 'Jul 30, 2026';
+      : 'Aug 15, 2026';
 
-    const creatorName = profile?.full_name || user?.email?.split('@')[0] || 'Workspace Manager';
+    const creatorName = profile?.full_name || user?.email?.split('@')[0] || 'Employee';
 
     const newTask = {
       id: `task-${Date.now()}`,
@@ -106,24 +131,26 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       title: title.trim(),
       description: description.trim(),
       issueType,
-      project,
+      project: isStandalone ? 'Standalone Task' : project,
       priority,
-      status: 'In Progress',
+      status: 'Todo',
       assignee: {
-        name: selectedAssignee.full_name,
-        avatar: selectedAssignee.avatar_url,
+        id: primaryAssignee.id,
+        name: primaryAssignee.full_name,
+        avatar: primaryAssignee.avatar_url,
       },
+      coAssignees: assignAll ? workspaceMembers.map((m) => ({ id: m.id, name: m.full_name })) : coAssignees,
       createdBy: creatorName,
       dueDate: formattedDate,
-      estimatedHours,
-      coAssignees: [],
+      partNumber,
+      hardwareRev,
       subtasks: [],
       activityLog: [
         {
           id: `log-${Date.now()}`,
           userName: creatorName,
-          action: `created task and assigned to ${selectedAssignee.full_name}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          action: 'created task',
+          timestamp: 'Just now',
         },
       ],
     };
@@ -138,231 +165,215 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             issue_type: newTask.issueType,
             project: newTask.project,
             priority: newTask.priority,
-            status: 'In Progress',
-            assignee_name: selectedAssignee.full_name,
-            assignee_avatar: selectedAssignee.avatar_url || '',
-            assignee_id: selectedAssignee.id,
-            due_date: formattedDate,
+            status: 'Todo',
+            assignee_name: primaryAssignee.full_name,
+            assignee_id: primaryAssignee.id,
+            assignee_avatar: primaryAssignee.avatar_url,
+            co_assignees: newTask.coAssignees,
             created_by: user?.id,
-            estimated_hours: estimatedHours,
-            co_assignees: [],
-            pending_invitations: [],
-            subtasks: [],
+            due_date: newTask.dueDate,
+            part_number: partNumber,
+            hardware_rev: hardwareRev,
             activity_log: newTask.activityLog,
-            comments: [],
           },
         ]);
       } catch (err) {
-        console.warn('Supabase task insert notice:', err);
+        console.error('Failed to insert task to Supabase:', err);
       }
     }
 
-    // Trigger Notification to Assigned Member
-    try {
-      await sendNotification({
-        recipientEmail: 'jignesh.giri2005@gmail.com',
-        senderName: creatorName,
-        senderAvatar: profile?.avatar_url,
-        title: `New Task Assigned: ${newTask.code}`,
-        message: `Task "${newTask.title}" was assigned to ${selectedAssignee.full_name} by ${creatorName}.`,
-        taskCode: newTask.code,
-        type: 'assignment',
-      });
-    } catch (e) {
-      console.warn('Notification trigger notice:', e);
-    }
-
     setIsSubmitting(false);
-    setSuccessMsg(`Task "${newTask.code}" assigned to ${selectedAssignee.full_name} successfully!`);
-    if (onTaskCreated) {
-      onTaskCreated(newTask);
-    }
+    setSuccessMsg('Task created successfully!');
+
     setTimeout(() => {
       setSuccessMsg('');
-      setTitle('');
-      setDescription('');
+      if (onTaskCreated) onTaskCreated(newTask);
       onClose();
-    }, 1500);
+    }, 600);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in-50 duration-150">
-      <div
-        className="w-full max-w-xl bg-white rounded-2xl shadow-soft-lg border border-slate-200/90 overflow-hidden space-y-4 p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold">
-              <CheckSquare className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Create & Assign Task</h2>
-              <p className="text-xs text-slate-500">Assign work & specify detailed instructions</p>
-            </div>
+            <CheckSquare className="w-5 h-5 text-brand-600" />
+            <h3 className="text-lg font-extrabold text-slate-900">Create Task / Work Order</h3>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
-          >
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {successMsg ? (
-          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-semibold text-center">
+        {successMsg && (
+          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200">
             {successMsg}
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Issue Type */}
-              <div className="space-y-1.5 sm:col-span-1">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Issue Type
-                </label>
-                <select
-                  value={issueType}
-                  onChange={(e) => setIssueType(e.target.value as IssueType)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
-                >
-                  <option value="Task">📌 Task</option>
-                  <option value="Bug">🐛 Bug</option>
-                  <option value="Feature">✨ Feature</option>
-                  <option value="Improvement">⚡ Improvement</option>
-                </select>
-              </div>
+        )}
 
-              {/* Task Title */}
-              <div className="space-y-1.5 sm:col-span-2">
-                <Input
-                  label="Task Title"
-                  placeholder="e.g. Implement Hardware Circuitry Testing"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Task Title */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Task Title *</label>
+            <Input
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. PCB Component Soldering & Thermal Test"
+            />
+          </div>
 
-            {/* Detailed Information Box / Description */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 flex items-center justify-between">
-                <span>Task Information & Detailed Description</span>
-                <span className="text-[10px] text-slate-400 font-normal">Markdown Supported</span>
-              </label>
-              <textarea
-                rows={4}
-                placeholder="Provide detailed instructions, specifications, technical criteria, or expected output for this task..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-medium text-slate-900"
+          {/* Standalone vs Project Toggle */}
+          <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <span className="text-xs font-bold text-slate-700">Task Context:</span>
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+              <input
+                type="radio"
+                checked={isStandalone}
+                onChange={() => setIsStandalone(true)}
+                className="text-brand-600 focus:ring-brand-500"
+              />
+              Standalone Task (Individual Work)
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+              <input
+                type="radio"
+                checked={!isStandalone}
+                onChange={() => setIsStandalone(false)}
+                className="text-brand-600 focus:ring-brand-500"
+              />
+              Belongs to Project
+            </label>
+          </div>
+
+          {!isStandalone && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Select Project</label>
+              <Input
+                value={project}
+                onChange={(e) => setProject(e.target.value)}
+                placeholder="e.g. WSS 5G Outdoor Unit Development"
               />
             </div>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Project Select */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Project Track
-                </label>
-                <select
-                  value={project}
-                  onChange={(e) => setProject(e.target.value)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
-                >
-                  <option value="Hardware Architecture">Hardware Architecture</option>
-                  <option value="Mechanical Design & CAD">Mechanical Design & CAD</option>
-                  <option value="Embedded Firmware & RTOS">Embedded Firmware & RTOS</option>
-                  <option value="Telecom Solutions">Telecom Solutions</option>
-                  <option value="QA & Compliance Testing">QA & Compliance Testing</option>
-                </select>
-              </div>
-
-              {/* Assignee Select dynamically populated from Database */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Assign To Member
-                </label>
-                <select
-                  value={assigneeName}
-                  onChange={(e) => setAssigneeName(e.target.value)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
-                >
-                  {workspaceMembers.map((member) => (
-                    <option key={member.id} value={member.full_name}>
-                      {member.full_name} ({member.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Priority Select */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Priority
-                </label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as any)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
-                >
-                  <option value="Urgent">🔴 Urgent</option>
-                  <option value="High">🟠 High</option>
-                  <option value="Medium">🟡 Medium</option>
-                  <option value="Low">🔵 Low</option>
-                </select>
-              </div>
-
-              {/* Due Date Input */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium cursor-pointer"
-                  required
-                />
-              </div>
-
-              {/* Estimated Hours */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
-                  Est. Hours
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={estimatedHours}
-                  onChange={(e) => setEstimatedHours(parseInt(e.target.value) || 0)}
-                  className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
-                />
-              </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
-              <Button variant="outline" size="md" onClick={onClose} className="text-xs">
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                className="text-xs font-semibold shadow-soft"
-                isLoading={isSubmitting}
+          {/* Issue Type & Priority */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Issue Category</label>
+              <select
+                value={issueType}
+                onChange={(e) => setIssueType(e.target.value as IssueType)}
+                className="w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
               >
-                Create & Assign Task
-              </Button>
+                {[
+                  'PCB Layout',
+                  'Hardware Design',
+                  'Mechanical CAD',
+                  'Firmware Flash',
+                  'QA & Compliance',
+                  'Component Procurement',
+                  'Field Issue',
+                  'General Task',
+                ].map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
             </div>
-          </form>
-        )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as any)}
+                className="w-full rounded-xl border border-slate-200 p-2.5 text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
+              >
+                <option value="Urgent">🔴 Urgent</option>
+                <option value="High">🟠 High</option>
+                <option value="Medium">🟡 Medium</option>
+                <option value="Low">🟢 Low</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Dynamic Assignees Selector (Zero Hardcoded Names) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase">
+                Assignees & Co-Assignees
+              </label>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-brand-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={assignAll}
+                  onChange={(e) => {
+                    setAssignAll(e.target.checked);
+                    if (e.target.checked) setSelectedAssigneeIds(workspaceMembers.map((m) => m.id));
+                  }}
+                  className="rounded text-brand-600 focus:ring-brand-500"
+                />
+                Assign to All Employees
+              </label>
+            </div>
+
+            {!assignAll && (
+              <div className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50/50 max-h-48 overflow-y-auto">
+                <Input
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  placeholder="Search employee name or team..."
+                  className="text-xs mb-2"
+                />
+
+                {filteredMembers.map((m) => {
+                  const isSelected = selectedAssigneeIds.includes(m.id);
+                  const displayBadge = m.role === 'Manager' ? 'Manager' : m.team_name || m.role;
+
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => toggleUserSelection(m.id)}
+                      className={`flex items-center justify-between p-2 rounded-xl text-xs font-medium cursor-pointer transition-colors ${
+                        isSelected ? 'bg-brand-50 text-brand-900 border border-brand-200' : 'bg-white hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900">{m.full_name}</span>
+                        <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                          ({displayBadge})
+                        </span>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-brand-600" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description & Requirements</label>
+            <textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter work details, hardware specifications, component IDs..."
+              className="w-full rounded-xl border border-slate-200 p-2.5 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" size="sm" isLoading={isSubmitting}>
+              Create Task
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );

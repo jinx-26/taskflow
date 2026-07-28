@@ -4,18 +4,63 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Avatar } from '../components/ui/Avatar';
 import { useAuth } from '../hooks/useAuth';
-import { Settings as SettingsIcon, User, Key, Bell, Shield, Check } from 'lucide-react';
+import { Settings as SettingsIcon, User, Key, Shield, Check, Lock, Camera } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { Link } from 'react-router-dom';
 
 export const Settings: React.FC = () => {
   const { user, profile, userRole, userStatus } = useAuth();
   const [name, setName] = useState(profile?.full_name || user?.user_metadata?.full_name || 'Workspace User');
-  const [email] = useState(user?.email || 'user@taskflow.io');
+  const [email] = useState(user?.email || 'user@hfcl.com');
+  const [password, setPassword] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
   const [saved, setSaved] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [msg, setMsg] = useState('');
 
-  const handleSave = (e: React.FormEvent) => {
+  const isAdminOrSuper = userRole === 'SuperAdmin' || userRole === 'Admin';
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setIsSubmitting(true);
+
+    if (isSupabaseConfigured && user) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ full_name: name, avatar_url: avatarUrl })
+          .eq('id', user.id);
+
+        if (password.trim()) {
+          await supabase.auth.updateUser({ password: password.trim() });
+          setPassword('');
+        }
+      } catch (err) {
+        console.error('Error updating settings:', err);
+      }
+    }
+
+    setIsSubmitting(false);
+    setMsg('Settings and profile updated successfully!');
+    setTimeout(() => setMsg(''), 3000);
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !isSupabaseConfigured) return;
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `avatars/${user.id}_${Date.now()}.${fileExt}`;
+      const { data, error } = await supabase.storage.from('task-attachments').upload(filePath, file);
+
+      if (!error && data) {
+        const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
+        setAvatarUrl(pubData.publicUrl);
+      }
+    } catch (err) {
+      console.warn('Avatar upload fallback:', err);
+    }
   };
 
   return (
@@ -23,11 +68,11 @@ export const Settings: React.FC = () => {
       {/* Header */}
       <div className="pb-4 border-b border-slate-200/80">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <span className="text-xs font-bold text-brand-700 uppercase tracking-wider bg-brand-50 px-2 py-0.5 rounded border border-brand-200/60">
             Preferences
           </span>
           <span className="text-slate-300">•</span>
-          <span className="text-xs font-semibold text-brand-600">Account & Security</span>
+          <span className="text-xs font-semibold text-slate-500">Account & Security</span>
         </div>
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-1">
           <SettingsIcon className="w-6 h-6 text-brand-600" />
@@ -35,10 +80,10 @@ export const Settings: React.FC = () => {
         </h1>
       </div>
 
-      {saved && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+      {msg && (
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2 font-bold">
           <Check className="w-4 h-4 text-emerald-600" />
-          <span>Settings saved successfully!</span>
+          <span>{msg}</span>
         </div>
       )}
 
@@ -49,23 +94,23 @@ export const Settings: React.FC = () => {
             <User className="w-4 h-4 text-brand-600" />
             Profile Details
           </CardTitle>
-          <CardDescription>
-            Manage your display name, role, and public workspace profile
+          <CardDescription className="text-xs text-slate-500">
+            Manage your display name, profile photo, and password security.
           </CardDescription>
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSave} className="space-y-4">
+          <form onSubmit={handleSaveProfile} className="space-y-4">
             <div className="flex items-center gap-4 pb-2">
-              <Avatar
-                src={user?.user_metadata?.avatar_url}
-                name={name}
-                size="lg"
-              />
+              <Avatar src={avatarUrl} name={name} size="lg" />
               <div>
-                <Button variant="outline" size="sm" className="text-xs">
-                  Change Photo
-                </Button>
+                <label className="cursor-pointer">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-50 text-slate-700 transition-colors">
+                    <Camera className="w-3.5 h-3.5 text-brand-600" />
+                    Change Profile Photo
+                  </span>
+                  <input type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
+                </label>
                 <p className="text-[11px] text-slate-400 mt-1">JPG, GIF or PNG. Max 2MB.</p>
               </div>
             </div>
@@ -80,45 +125,51 @@ export const Settings: React.FC = () => {
                 label="Email Address"
                 value={email}
                 disabled
-                helperText="Email address is tied to your Supabase account authentication."
+                helperText="Email address tied to your HFCL account."
+              />
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <Input
+                type="password"
+                label="New Security Password"
+                placeholder="Leave blank to keep current password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
               />
             </div>
 
             <div className="pt-2 flex justify-end">
-              <Button type="submit" variant="primary" size="md" className="text-xs font-semibold">
-                Save Changes
+              <Button type="submit" variant="primary" size="md" className="text-xs font-bold" isLoading={isSubmitting}>
+                Save Profile Changes
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
 
-      {/* Supabase Security Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-brand-600" />
-            Supabase Security & Auth
-          </CardTitle>
-          <CardDescription>
-            Session configuration and environment integration status
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-            <div>
-              <p className="text-xs font-bold text-slate-800">Workspace Role & Status</p>
-              <p className="text-[11px] text-slate-500">
-                Assigned Role: <strong className="font-semibold text-purple-600">{userRole}</strong> • Account Status: <strong className="font-semibold text-emerald-600">{userStatus}</strong>
-              </p>
-            </div>
-            <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Active
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Admin Panel Access Link */}
+      {isAdminOrSuper && (
+        <Card className="bg-amber-50/50 border-amber-200">
+          <CardHeader>
+            <CardTitle className="text-base font-bold text-amber-900 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-600" />
+              Admin User Onboarding & Approval Panel
+            </CardTitle>
+            <CardDescription className="text-xs text-amber-700">
+              Approve pending employee signups, manage role permissions, and handle deletion requests.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link to={userRole === 'SuperAdmin' ? '/super-ctrl-sec-7x9q' : '/sys-admin-panel-k3m8'}>
+              <Button variant="primary" size="sm" className="bg-amber-600 hover:bg-amber-700 border-none text-white font-bold text-xs">
+                Open Admin Approval Panel →
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

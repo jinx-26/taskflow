@@ -16,6 +16,7 @@ import {
   Activity as ActivityIcon,
   Inbox,
   TrendingUp,
+  Megaphone,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -26,23 +27,34 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { TaskPlaceholder } from '../types';
+import { TaskPlaceholder, Announcement } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchLiveTasks, formatDisplayDate } from '../services/taskService';
+import { fetchLiveTasks } from '../services/taskService';
+import { fetchAnnouncements } from '../services/announcementService';
 
 export const Dashboard: React.FC = () => {
-  const { user } = useAuth();
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Team Lead';
+  const { user, profile } = useAuth();
+  const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Team Lead';
+
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskPlaceholder | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [tasks, setTasks] = useState<TaskPlaceholder[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Time-aware greeting
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const loadDashboardData = async () => {
     setIsLoading(true);
-    const liveTasks = await fetchLiveTasks();
+    const [liveTasks, liveAnnouncements] = await Promise.all([
+      fetchLiveTasks(),
+      fetchAnnouncements(),
+    ]);
     setTasks(liveTasks);
+    setAnnouncements(liveAnnouncements.slice(0, 3));
     setIsLoading(false);
   };
 
@@ -59,6 +71,13 @@ export const Dashboard: React.FC = () => {
             loadDashboardData();
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'announcements' },
+          () => {
+            loadDashboardData();
+          }
+        )
         .subscribe();
 
       return () => {
@@ -67,25 +86,16 @@ export const Dashboard: React.FC = () => {
     }
   }, []);
 
-  const handleTaskUpdated = (updatedTask: TaskPlaceholder) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
-    );
-    setSelectedTask(updatedTask);
-  };
-
   const completedCount = tasks.filter((t) => t.status === 'Done').length;
-  const pendingCount = tasks.filter((t) => t.status !== 'Done').length;
+  const inProgressCount = tasks.filter((t) => t.status === 'In Progress' || t.status === 'In Review').length;
+  const pendingCount = tasks.filter((t) => t.status === 'Todo' || t.status === 'Backlog').length;
 
-  // Dynamic velocity graph data
   const velocityGraphData = [
-    { day: 'Mon', tasks: tasks.length > 0 ? 1 : 0, completed: Math.max(0, completedCount) },
-    { day: 'Tue', tasks: tasks.length > 0 ? 2 : 1, completed: Math.max(0, completedCount + 1) },
-    { day: 'Wed', tasks: tasks.length + 1, completed: Math.max(1, completedCount + 2) },
-    { day: 'Thu', tasks: tasks.length + 2, completed: Math.max(1, completedCount + 2) },
-    { day: 'Fri', tasks: tasks.length + 3, completed: Math.max(2, completedCount + 3) },
-    { day: 'Sat', tasks: tasks.length + 3, completed: Math.max(2, completedCount + 4) },
-    { day: 'Sun', tasks: tasks.length + 4, completed: Math.max(3, completedCount + 5) },
+    { day: 'Mon', tasks: Math.max(1, tasks.length - 3), completed: Math.max(0, completedCount - 2) },
+    { day: 'Tue', tasks: Math.max(2, tasks.length - 2), completed: Math.max(1, completedCount - 1) },
+    { day: 'Wed', tasks: Math.max(3, tasks.length - 1), completed: Math.max(1, completedCount) },
+    { day: 'Thu', tasks: tasks.length, completed: completedCount },
+    { day: 'Fri', tasks: tasks.length + 1, completed: completedCount + 1 },
   ];
 
   return (
@@ -93,310 +103,181 @@ export const Dashboard: React.FC = () => {
       {/* Welcome Card Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-brand-950 p-6 md:p-8 text-white shadow-soft-lg border border-slate-800">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-brand-500/20 via-transparent to-transparent pointer-events-none" />
-        
+
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-brand-500/20 text-brand-300 border border-brand-500/30 backdrop-blur-sm">
-                Sprint Active
+                HFCL Limited Workspace
               </span>
+              <span className="text-slate-400">•</span>
+              <span className="text-xs text-slate-300">Live Workspace Status</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Welcome back, {userName} 👋
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
+              {greeting}, {displayName} 👋
             </h1>
-            <p className="text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              You have <span className="font-semibold text-brand-300">{tasks.length} total tasks</span> in your workspace. Click any task below to manage, comment, or mark complete.
+            <p className="text-xs md:text-sm text-slate-300 max-w-xl leading-relaxed">
+              Track active hardware R&D tasks, view team announcements, and collaborate seamlessly across teams.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <Button
-              variant="primary"
-              size="md"
-              className="bg-brand-500 hover:bg-brand-600 text-white font-semibold text-xs shadow-soft"
-              leftIcon={<Plus className="w-4 h-4" />}
-              onClick={() => setCreateModalOpen(true)}
-            >
-              New Task
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            size="md"
+            className="shadow-glow shrink-0 font-semibold text-xs py-2.5"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setCreateModalOpen(true)}
+          >
+            Create New Task
+          </Button>
         </div>
       </div>
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1 */}
-        <Card hoverEffect className="relative overflow-hidden">
+        <Card hoverEffect className="p-5 border-slate-200/80">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Total Projects
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
-              <FolderKanban className="w-4 h-4" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Active Tasks</span>
+            <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold">
+              <FolderKanban className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-extrabold text-slate-900 tracking-tight">1</span>
-            <span className="inline-flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-              Active
-            </span>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-slate-900">{tasks.length}</span>
+            <span className="text-xs text-brand-700 font-semibold">Active Items</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">TaskFlow Workspace</p>
         </Card>
 
-        {/* Metric 2 */}
-        <Card hoverEffect className="relative overflow-hidden">
+        <Card hoverEffect className="p-5 border-slate-200/80">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Total Tasks
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">In Progress</span>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-extrabold text-slate-900 tracking-tight">{tasks.length}</span>
-            <span className="inline-flex items-center text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-              Live
-            </span>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-slate-900">{inProgressCount}</span>
+            <span className="text-xs text-amber-700 font-semibold">In Execution</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">across active workspace</p>
         </Card>
 
-        {/* Metric 3 */}
-        <Card hoverEffect className="relative overflow-hidden">
+        <Card hoverEffect className="p-5 border-slate-200/80">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Pending Tasks
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock className="w-4 h-4" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Completed Tasks</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+              <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-extrabold text-slate-900 tracking-tight">{pendingCount}</span>
-            <span className="inline-flex items-center text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
-              In Progress
-            </span>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-slate-900">{completedCount}</span>
+            <span className="text-xs text-emerald-700 font-semibold">Finished</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">awaiting completion</p>
         </Card>
 
-        {/* Metric 4 */}
-        <Card hoverEffect className="relative overflow-hidden">
+        <Card hoverEffect className="p-5 border-slate-200/80">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Completed Tasks
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-2xl font-extrabold text-slate-900 tracking-tight">{completedCount}</span>
-            <span className="inline-flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-              Done
-            </span>
-          </div>
-          <p className="mt-1 text-[11px] text-slate-400">verified deliverables</p>
-        </Card>
-      </div>
-
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Productivity Chart */}
-        <Card className="lg:col-span-2 flex flex-col justify-between">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 border-b-0">
-            <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-brand-600" />
-                Productivity & Velocity Curve
-              </CardTitle>
-              <CardDescription>
-                Live sprint execution velocity & completion trend
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-3 text-xs font-semibold">
-              <span className="flex items-center gap-1.5 text-brand-600">
-                <span className="w-2.5 h-2.5 rounded-full bg-brand-500" /> Tasks Velocity
-              </span>
-              <span className="flex items-center gap-1.5 text-emerald-600">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Completed
-              </span>
-            </div>
-          </CardHeader>
-
-          <CardContent className="pt-4 pb-2">
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={velocityGraphData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorTasks" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="tasks" stroke="#2563eb" strokeWidth={3} fillOpacity={1} fill="url(#colorTasks)" />
-                  <Area type="monotone" dataKey="completed" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorCompleted)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Live Activity Feed */}
-        <Card className="flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 border-b-0">
-            <div>
-              <CardTitle className="text-base font-bold text-slate-900">
-                Recent Activity
-              </CardTitle>
-              <CardDescription>Workspace activity updates</CardDescription>
-            </div>
-          </CardHeader>
-
-          <CardContent className="pt-2 flex-1 flex flex-col justify-center items-center text-center p-6">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Backlog</span>
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
               <Inbox className="w-5 h-5" />
             </div>
-            <p className="text-xs font-semibold text-slate-800">Workspace active</p>
-            <p className="text-[11px] text-slate-400">Activity logs as tasks are created and updated.</p>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-slate-900">{pendingCount}</span>
+            <span className="text-xs text-purple-700 font-semibold">To Start</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Main Graph & Announcements Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Chart */}
+        <Card className="lg:col-span-2 space-y-4">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-brand-600" />
+                  Task Velocity & Completion Graph
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Weekly task creation vs completed deliverables.
+                </CardDescription>
+              </div>
+              <Badge variant="primary">Realtime</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="h-64 pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={velocityGraphData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorTasks" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <Tooltip />
+                <Area type="monotone" dataKey="tasks" stroke="#4f46e5" strokeWidth={2} fillOpacity={1} fill="url(#colorTasks)" name="Total Tasks" />
+                <Area type="monotone" dataKey="completed" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorCompleted)" name="Completed" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Right Recent Announcements */}
+        <Card className="space-y-4 flex flex-col justify-between">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <Megaphone className="w-5 h-5 text-brand-600" />
+                Company Broadcasts
+              </CardTitle>
+              <Badge variant="neutral">Latest</Badge>
+            </div>
+            <CardDescription className="text-xs text-slate-500">
+              Recent notices posted for HFCL teams.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-3 pt-0 flex-1">
+            {announcements.length === 0 ? (
+              <div className="text-center py-8 text-xs text-slate-400">
+                No recent announcements posted yet.
+              </div>
+            ) : (
+              announcements.map((ann) => (
+                <div key={ann.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                  <span className="text-[11px] font-bold text-brand-700 block truncate">{ann.title}</span>
+                  <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{ann.content}</p>
+                  <span className="text-[10px] text-slate-400 block pt-1">{ann.author_name}</span>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Deadlines Table Card */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between border-b-0 pb-0">
-          <div>
-            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-brand-600" />
-              Assigned Tasks & Deadlines
-            </CardTitle>
-            <CardDescription>Live workspace task schedule</CardDescription>
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            className="text-xs font-semibold"
-            leftIcon={<Plus className="w-3.5 h-3.5" />}
-            onClick={() => setCreateModalOpen(true)}
-          >
-            Create Task
-          </Button>
-        </CardHeader>
-
-        <CardContent className="pt-4">
-          {tasks.length === 0 ? (
-            <div className="p-8 text-center space-y-2">
-              <p className="text-xs text-slate-500 font-medium">No tasks found in your workspace.</p>
-              <Button variant="outline" size="sm" onClick={() => setCreateModalOpen(true)} className="text-xs">
-                + Assign First Task
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-semibold uppercase tracking-wider">
-                    <th className="py-2.5 px-3">Task Title</th>
-                    <th className="py-2.5 px-3">Project</th>
-                    <th className="py-2.5 px-3">Due Date</th>
-                    <th className="py-2.5 px-3">Priority</th>
-                    <th className="py-2.5 px-3">Assignee</th>
-                    <th className="py-2.5 px-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {tasks.map((item) => (
-                    <tr
-                      key={item.id}
-                      onClick={() => {
-                        setSelectedTask(item);
-                        setDetailsModalOpen(true);
-                      }}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                      title="Click to view details, add comments, or mark complete"
-                    >
-                      <td className="py-3 px-3 text-slate-900 font-semibold group-hover:text-brand-600">
-                        {item.title}
-                      </td>
-                      <td className="py-3 px-3 text-slate-500">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[11px]">
-                          {item.project}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 flex items-center gap-1.5 font-medium">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDisplayDate(item.dueDate)}
-                      </td>
-                      <td className="py-3 px-3">
-                        <Badge
-                          variant={
-                            item.priority === 'Urgent'
-                              ? 'danger'
-                              : item.priority === 'High'
-                              ? 'warning'
-                              : 'neutral'
-                          }
-                          dot
-                        >
-                          {item.priority}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
-                          <Avatar src={item.assignee?.avatar} name={item.assignee?.name} size="xs" />
-                          <div className="flex flex-col">
-                            <span className="text-slate-900 font-semibold">{item.assignee?.name}</span>
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              by {(item as any).createdBy ? (item as any).createdBy.split(' ')[0] : 'Sarita'}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <Badge
-                          variant={
-                            item.status === 'Done'
-                              ? 'success'
-                              : item.status === 'In Progress'
-                              ? 'primary'
-                              : 'purple'
-                          }
-                        >
-                          {item.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
+      {/* Modals */}
       <CreateTaskModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onTaskCreated={() => loadDashboardData()}
       />
 
-      <TaskDetailsModal
-        isOpen={detailsModalOpen}
-        onClose={() => setDetailsModalOpen(false)}
-        task={selectedTask}
-        onTaskUpdated={handleTaskUpdated}
-      />
+      {selectedTask && (
+        <TaskDetailsModal
+          isOpen={detailsModalOpen}
+          onClose={() => setDetailsModalOpen(false)}
+          task={selectedTask}
+          onTaskUpdated={() => loadDashboardData()}
+        />
+      )}
     </div>
   );
 };

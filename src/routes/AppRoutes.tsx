@@ -17,6 +17,7 @@ import { Teams } from '../pages/Teams';
 import { Calendar } from '../pages/Calendar';
 import { Notifications } from '../pages/Notifications';
 import { Settings } from '../pages/Settings';
+import { Announcements } from '../pages/Announcements';
 import { AdminPanel } from '../pages/AdminPanel';
 import { SuperAdminPanel } from '../pages/SuperAdminPanel';
 import { SuperAdminInit } from '../pages/SuperAdminInit';
@@ -32,7 +33,7 @@ export const AppRoutes: React.FC = () => {
         </Route>
       </Route>
 
-      {/* Password Reset Route (Exempt from PublicRoute to allow recovery sessions) */}
+      {/* Password Reset Route */}
       <Route element={<AuthLayout />}>
         <Route path="/reset-password" element={<ResetPassword />} />
       </Route>
@@ -51,6 +52,7 @@ export const AppRoutes: React.FC = () => {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/teams" element={<Teams />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/announcements" element={<Announcements />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />
 

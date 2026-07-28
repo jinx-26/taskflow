@@ -6,14 +6,29 @@ import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { CreateTaskModal } from '../components/common/CreateTaskModal';
 import { TaskDetailsModal } from '../components/common/TaskDetailsModal';
-import { CheckSquare, Plus, Search, Filter, Loader2, Inbox } from 'lucide-react';
+import {
+  CheckSquare,
+  Plus,
+  Search,
+  Filter,
+  Loader2,
+  Inbox,
+  LayoutGrid,
+  ListFilter,
+  UserCheck,
+  Building,
+} from 'lucide-react';
 import { TaskPlaceholder } from '../types';
+import { useAuth } from '../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchLiveTasks, formatDisplayDate } from '../services/taskService';
+import { fetchLiveTasks } from '../services/taskService';
 
 export const Tasks: React.FC = () => {
+  const { user } = useAuth();
   const [taskList, setTaskList] = useState<TaskPlaceholder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterMode, setFilterMode] = useState<'assignedToMe' | 'all'>('assignedToMe');
+  const [viewMode, setViewMode] = useState<'board' | 'table'>('board');
   const [isLoading, setIsLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskPlaceholder | null>(null);
@@ -47,28 +62,27 @@ export const Tasks: React.FC = () => {
     }
   }, []);
 
-  const handleTaskCreated = (newTask: any) => {
-    setTaskList((prev) => [newTask, ...prev]);
-  };
+  const filteredTasks = taskList.filter((t) => {
+    if (t.isDeleted) return false;
 
-  const handleTaskUpdated = (updatedTask: TaskPlaceholder) => {
-    setTaskList((prev) =>
-      prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
-    );
-    setSelectedTask(updatedTask);
-  };
+    // Filter by assigned user
+    if (filterMode === 'assignedToMe' && user?.id) {
+      const isPrimary = t.assignee?.id === user.id;
+      const isCoAssignee = t.coAssignees?.some((ca) => ca.id === user.id);
+      if (!isPrimary && !isCoAssignee) return false;
+    }
 
-  const handleTaskDeleted = (deletedTaskId: string) => {
-    setTaskList((prev) => prev.filter((t) => t.id !== deletedTaskId));
-    setSelectedTask(null);
-  };
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchCode = t.code.toLowerCase().includes(q);
+      const matchTitle = t.title.toLowerCase().includes(q);
+      const matchProject = t.project?.toLowerCase().includes(q);
+      if (!matchCode && !matchTitle && !matchProject) return false;
+    }
 
-  const filteredTasks = taskList.filter(
-    (t) =>
-      !t.isDeleted &&
-      (t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.code.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+    return true;
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200">
@@ -76,17 +90,17 @@ export const Tasks: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Workspace
+            <span className="text-xs font-bold text-brand-700 uppercase tracking-wider bg-brand-50 px-2 py-0.5 rounded border border-brand-200/60">
+              HFCL Task Hub
             </span>
             <span className="text-slate-300">•</span>
-            <span className="text-xs font-semibold text-brand-600">
-              {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'}
+            <span className="text-xs font-semibold text-slate-500">
+              {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'} Listed
             </span>
           </div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 mt-1">
             <CheckSquare className="w-6 h-6 text-brand-600" />
-            Tasks & Work Orders
+            My Tasks & Work Orders
           </h1>
         </div>
 
@@ -103,172 +117,197 @@ export const Tasks: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter toolbar */}
+      {/* Toolbar & View Toggles */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="w-full sm:w-80">
-          <Input
-            placeholder="Search tasks by title or code..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            leftIcon={<Search className="w-4 h-4 text-slate-400" />}
-          />
+        {/* Filter Toggle */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => setFilterMode('assignedToMe')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              filterMode === 'assignedToMe'
+                ? 'bg-brand-600 text-white border-brand-600 shadow-soft-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            My Assigned Tasks
+          </button>
+          <button
+            onClick={() => setFilterMode('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              filterMode === 'all'
+                ? 'bg-brand-600 text-white border-brand-600 shadow-soft-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <Building className="w-3.5 h-3.5" />
+            All Department Tasks
+          </button>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <Button variant="outline" size="sm" className="text-xs" leftIcon={<Filter className="w-3.5 h-3.5" />}>
-            All Priorities
-          </Button>
+
+        {/* Search & Board/Table View Toggle */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="w-full sm:w-64">
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search code, title, project..."
+              leftIcon={<Search className="w-4 h-4 text-slate-400" />}
+            />
+          </div>
+
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
+            <button
+              onClick={() => setViewMode('board')}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'board' ? 'bg-white text-brand-600 shadow-soft-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Kanban Board View"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'table' ? 'bg-white text-brand-600 shadow-soft-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Spreadsheet Table View"
+            >
+              <ListFilter className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tasks Content Region */}
+      {/* Main View Area */}
       {isLoading ? (
-        <Card>
-          <CardContent className="p-12 flex flex-col items-center justify-center text-center space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
-            <p className="text-xs font-semibold text-slate-500">Loading workspace tasks...</p>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading tasks...
+        </div>
       ) : filteredTasks.length === 0 ? (
         <Card>
-          <CardContent className="p-12 flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-              <Inbox className="w-6 h-6" />
-            </div>
-            <div className="space-y-1 max-w-sm">
-              <h3 className="text-base font-bold text-slate-900">No active tasks</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                {searchQuery
-                  ? 'No tasks match your search filter.'
-                  : 'No active tasks found. Click Create Task to assign work to a team member.'}
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="md"
-              className="text-xs font-semibold shadow-soft"
-              leftIcon={<Plus className="w-4 h-4" />}
-              onClick={() => setCreateModalOpen(true)}
-            >
-              Create & Assign Task
-            </Button>
+          <CardContent className="p-12 text-center text-slate-500 space-y-3">
+            <Inbox className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-base font-bold text-slate-800">No Tasks Found</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {filterMode === 'assignedToMe'
+                ? "You don't have any active tasks assigned directly to you."
+                : 'No tasks match your search criteria.'}
+            </p>
           </CardContent>
         </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-400 font-semibold uppercase tracking-wider">
-                    <th className="py-3 px-4">Code & Type</th>
-                    <th className="py-3 px-4">Task Title</th>
-                    <th className="py-3 px-4">Project Track</th>
-                    <th className="py-3 px-4">Priority</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Assignees</th>
-                    <th className="py-3 px-4 text-right">Due Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredTasks.map((task) => (
-                    <tr
-                      key={task.id}
+      ) : viewMode === 'board' ? (
+        /* Board View */
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {['Todo', 'In Progress', 'In Review', 'Done'].map((status) => {
+            const columnTasks = filteredTasks.filter((t) => t.status === status);
+            return (
+              <div key={status} className="bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80 space-y-3 min-h-[450px]">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{status}</span>
+                  <Badge variant="neutral">{columnTasks.length}</Badge>
+                </div>
+
+                <div className="space-y-2">
+                  {columnTasks.map((t) => (
+                    <div
+                      key={t.id}
                       onClick={() => {
-                        setSelectedTask(task);
+                        setSelectedTask(t);
                         setDetailsModalOpen(true);
                       }}
-                      className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                      title="Click to view details, invite co-assignees, add comments, or delete task"
+                      className="p-3.5 bg-white rounded-xl border border-slate-200/90 shadow-soft-xs hover:border-brand-500 cursor-pointer space-y-2.5 transition-all"
                     >
-                      <td className="py-3.5 px-4 font-mono font-bold text-brand-600 group-hover:underline">
-                        <div className="flex items-center gap-1.5">
-                          <span>{task.code}</span>
-                          {task.issueType && (
-                            <span className="text-[10px] font-sans font-bold px-1.5 py-0.2 bg-slate-100 text-slate-700 rounded border border-slate-200">
-                              {task.issueType}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-900 font-semibold max-w-xs truncate">
-                        {task.title}
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-500">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px]">
-                          {task.project}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-200/60">
+                          {t.code}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-4">
                         <Badge
                           variant={
-                            task.priority === 'Urgent'
+                            t.priority === 'Urgent'
                               ? 'danger'
-                              : task.priority === 'High'
+                              : t.priority === 'High'
                               ? 'warning'
                               : 'neutral'
                           }
-                          dot
                         >
-                          {task.priority}
+                          {t.priority}
                         </Badge>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <Badge
-                          variant={
-                            task.status === 'Done'
-                              ? 'success'
-                              : task.status === 'In Progress'
-                              ? 'primary'
-                              : task.status === 'In Review'
-                              ? 'purple'
-                              : 'neutral'
-                          }
-                        >
-                          {task.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2">
-                          <div className="flex -space-x-1.5 overflow-hidden">
-                            <Avatar src={task.assignee?.avatar} name={task.assignee?.name} size="xs" />
-                            {task.coAssignees &&
-                              task.coAssignees.map((co, idx) => (
-                                <Avatar key={idx} src={co.avatar} name={co.name} size="xs" />
-                              ))}
-                          </div>
-                          <span className="text-slate-900 font-semibold text-xs truncate max-w-[120px]">
-                            {task.assignee?.name}
-                            {task.coAssignees && task.coAssignees.length > 0 && ` +${task.coAssignees.length}`}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-medium text-slate-600">
-                        {formatDisplayDate(task.dueDate)}
-                      </td>
-                    </tr>
+                      </div>
+
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">{t.title}</h4>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium">
+                        <span className="truncate max-w-[120px] font-semibold text-slate-600">
+                          {t.project || 'Standalone Task'}
+                        </span>
+                        <Avatar name={t.assignee?.name || 'Assignee'} size="xs" />
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Table View */
+        <Card className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase bg-slate-50/50">
+                <th className="p-3">Task Code</th>
+                <th className="p-3">Title</th>
+                <th className="p-3">Project</th>
+                <th className="p-3">Type</th>
+                <th className="p-3">Priority</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Assignee</th>
+                <th className="p-3">Due Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredTasks.map((t) => (
+                <tr
+                  key={t.id}
+                  onClick={() => {
+                    setSelectedTask(t);
+                    setDetailsModalOpen(true);
+                  }}
+                  className="hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  <td className="p-3 font-bold text-brand-700">{t.code}</td>
+                  <td className="p-3 font-bold text-slate-900">{t.title}</td>
+                  <td className="p-3 text-slate-600 font-medium">{t.project || 'Standalone'}</td>
+                  <td className="p-3 text-slate-600">{t.issueType || 'General Task'}</td>
+                  <td className="p-3 font-semibold">{t.priority}</td>
+                  <td className="p-3">
+                    <Badge variant={t.status === 'Done' ? 'primary' : 'neutral'}>{t.status}</Badge>
+                  </td>
+                  <td className="p-3 font-bold text-slate-800">{t.assignee?.name || 'Unassigned'}</td>
+                  <td className="p-3 text-slate-500">{t.dueDate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       )}
 
-      {/* Task Creation Modal */}
+      {/* Modals */}
       <CreateTaskModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        onTaskCreated={handleTaskCreated}
+        onTaskCreated={() => loadTasks()}
       />
 
-      {/* Task Details & Completion Modal */}
-      <TaskDetailsModal
-        isOpen={detailsModalOpen}
-        onClose={() => setDetailsModalOpen(false)}
-        task={selectedTask}
-        onTaskUpdated={handleTaskUpdated}
-        onTaskDeleted={handleTaskDeleted}
-      />
+      {selectedTask && (
+        <TaskDetailsModal
+          isOpen={detailsModalOpen}
+          onClose={() => setDetailsModalOpen(false)}
+          task={selectedTask}
+          onTaskUpdated={() => loadTasks()}
+        />
+      )}
     </div>
   );
 };

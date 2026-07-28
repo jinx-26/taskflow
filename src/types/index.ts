@@ -1,6 +1,6 @@
 import { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
-export type UserRole = 'SuperAdmin' | 'Admin' | 'Manager' | 'Lead' | 'Member' | 'Viewer';
+export type UserRole = 'SuperAdmin' | 'Admin' | 'Manager' | 'Lead' | 'Member';
 export type UserStatus = 'Pending' | 'Approved' | 'Rejected' | 'Suspended';
 
 export interface UserProfile {
@@ -10,8 +10,64 @@ export interface UserProfile {
   role: UserRole;
   status: UserStatus;
   is_superadmin?: boolean;
+  department_id?: string;
+  team_id?: string;
+  team_name?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  description?: string;
+  manager_id?: string;
+  manager_name?: string;
+  created_at?: string;
+}
+
+export interface Team {
+  id: string;
+  department_id?: string;
+  name: string;
+  description?: string;
+  lead_id?: string;
+  lead_name?: string;
+  members_count?: number;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface ProjectMember {
+  project_id: string;
+  user_id: string;
+  role?: string;
+  joined_at?: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  author_id?: string;
+  author_name: string;
+  author_avatar?: string;
+  attachment_url?: string;
+  attachment_name?: string;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  channel_id: string;
+  sender_id?: string;
+  sender_name: string;
+  sender_avatar?: string;
+  content: string;
+  attachment_url?: string;
+  attachment_name?: string;
+  attachment_type?: string;
+  created_at: string;
 }
 
 export interface DeletionRequest {
@@ -95,13 +151,22 @@ export interface ProjectPlaceholder {
   dueDate: string;
 }
 
-export type IssueType = 'Task' | 'Bug' | 'Feature' | 'Improvement';
+export type IssueType =
+  | 'PCB Layout'
+  | 'Hardware Design'
+  | 'Mechanical CAD'
+  | 'Firmware Flash'
+  | 'QA & Compliance'
+  | 'Component Procurement'
+  | 'Field Issue'
+  | 'General Task';
 
 export interface TaskCoAssignee {
   id?: string;
   name: string;
   avatar?: string;
   role?: string;
+  teamName?: string;
 }
 
 export interface SubtaskItem {
@@ -138,9 +203,10 @@ export interface TaskPlaceholder {
   description?: string;
   issueType?: IssueType;
   project: string;
+  project_id?: string; // Optional/nullable for standalone tasks
   priority: 'Urgent' | 'High' | 'Medium' | 'Low';
   status: 'Backlog' | 'Todo' | 'In Progress' | 'In Review' | 'Done';
-  assignee: { name: string; avatar?: string; id?: string };
+  assignee: { name: string; avatar?: string; id?: string; teamName?: string; role?: string };
   coAssignees?: TaskCoAssignee[];
   pendingInvitations?: CollaborationRequest[];
   subtasks?: SubtaskItem[];
@@ -153,4 +219,11 @@ export interface TaskPlaceholder {
   deletedBy?: string;
   estimatedHours?: number;
   loggedHours?: number;
+  partNumber?: string;
+  hardwareRev?: string;
+  testResult?: 'Pending' | 'Pass' | 'Fail' | 'Retest';
+  requiresManagerApproval?: boolean;
+  isApproved?: boolean;
+  approvedBy?: string;
+  blockedByTaskId?: string;
 }
