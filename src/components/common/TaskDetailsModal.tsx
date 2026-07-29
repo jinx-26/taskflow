@@ -391,110 +391,163 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            Comments ({comments.length})
+        Comments ({comments.length})
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Real-time WebSockets Live" />
           </button>
         </div>
 
         {/* TAB 1: DETAILS */}
-        {activeTab === 'details' && (
-          <div className="space-y-4">
-            {/* Description */}
-            <div className="space-y-1.5">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Description & Notes</h3>
-              <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
-                {description || 'No additional instructions provided for this task.'}
-              </p>
-            </div>
+        {activeTab === 'details' && (() => {
+          let cleanDesc = (description || '')
+            .replace(/📎 Attachment: \[(.*?)\]\((.*?)\)/g, '')
+            .trim();
 
-            {/* File Attachment Card if present */}
-            {task.attachmentUrl && (
+          let activeAttachmentUrl = task.attachmentUrl || null;
+          let activeAttachmentName = task.attachmentName || null;
+
+          if (!activeAttachmentUrl && description && description.includes('📎 Attachment:')) {
+            const match = description.match(/📎 Attachment: \[(.*?)\]\((.*?)\)/);
+            if (match) {
+              activeAttachmentName = match[1];
+              activeAttachmentUrl = match[2];
+            }
+          }
+
+          return (
+            <div className="space-y-4">
+              {/* Description */}
               <div className="space-y-1.5">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Specification Attachment</h3>
-                <div className="flex items-center justify-between p-3 bg-brand-50/50 border border-brand-200/80 rounded-xl">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold">
-                      <Paperclip className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-slate-900 block">{task.attachmentName || 'Task Attachment'}</span>
-                      <span className="text-[10px] text-slate-500">Document File</span>
-                    </div>
-                  </div>
-
-                  <a
-                    href={task.attachmentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-xs"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download Spec</span>
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {/* Co-Assignees & Pending Invitations Section */}
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
-                  <Users className="w-4 h-4 text-brand-600" />
-                  Assigned Members & Co-Assignees ({coAssignees.length + 1})
-                </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs font-semibold text-brand-600 border-brand-200 hover:bg-brand-50"
-                  leftIcon={<UserPlus className="w-3.5 h-3.5" />}
-                  onClick={() => {
-                    loadAvailableMembers();
-                    setShowInviteModal(true);
-                  }}
-                >
-                  + Request Co-Assignee
-                </Button>
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Description & Notes</h3>
+                <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 leading-relaxed">
+                  {cleanDesc || 'No additional instructions provided for this task.'}
+                </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {/* Primary Assignee Badge */}
-                <div className="flex items-center gap-2 p-2 bg-brand-50 border border-brand-200 rounded-xl">
-                  <Avatar name={task.assignee?.name || 'Assignee'} size="xs" />
-                  <div>
-                    <span className="text-xs font-bold text-brand-900 block leading-none">{task.assignee?.name || 'Primary'}</span>
-                    <span className="text-[10px] text-brand-600 font-semibold">Primary Lead</span>
-                  </div>
-                </div>
+              {/* File Attachment Card if present */}
+              {activeAttachmentUrl && (() => {
+                const filename = activeAttachmentName || 'Attachment';
+                const ext = (filename.split('.').pop() || '').toLowerCase();
+                let typeLabel = 'Attached File';
+                let typeTag = ext.toUpperCase() || 'FILE';
+                let tagStyle = 'bg-slate-100 text-slate-700 border-slate-200';
 
-                {/* Active Co-Assignees */}
-                {coAssignees.map((ca, idx) => (
-                  <div key={ca.id || idx} className="flex items-center gap-2 p-2 bg-slate-100 border border-slate-200 rounded-xl">
-                    <Avatar name={ca.name} src={ca.avatar} size="xs" />
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 block leading-none">{ca.name}</span>
-                      <span className="text-[10px] text-slate-500 font-medium">Co-Assignee</span>
-                    </div>
-                  </div>
-                ))}
+                if (['pdf'].includes(ext)) {
+                  typeLabel = 'PDF Document';
+                  tagStyle = 'bg-red-50 text-red-700 border-red-200';
+                } else if (['doc', 'docx'].includes(ext)) {
+                  typeLabel = 'Word Document';
+                  tagStyle = 'bg-blue-50 text-blue-700 border-blue-200';
+                } else if (['xls', 'xlsx', 'csv'].includes(ext)) {
+                  typeLabel = 'Excel Spreadsheet';
+                  tagStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                } else if (['ppt', 'pptx'].includes(ext)) {
+                  typeLabel = 'PowerPoint Presentation';
+                  tagStyle = 'bg-amber-50 text-amber-700 border-amber-200';
+                } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+                  typeLabel = 'Compressed Archive (ZIP/RAR)';
+                  tagStyle = 'bg-purple-50 text-purple-700 border-purple-200';
+                } else if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext)) {
+                  typeLabel = 'Image File';
+                  tagStyle = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                } else if (['cad', 'dwg', 'dxf', 'sch', 'brd', 'pcb'].includes(ext)) {
+                  typeLabel = 'CAD / Hardware Schematic File';
+                  tagStyle = 'bg-cyan-50 text-cyan-700 border-cyan-200';
+                }
 
-                {/* Pending Invitations */}
-                {pendingInvitations
-                  .filter((inv) => inv.status === 'Pending')
-                  .map((inv) => (
-                    <div key={inv.id} className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200/80 rounded-xl">
-                      <div className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center font-bold text-[10px]">
-                        ?
+                return (
+                  <div className="space-y-1.5">
+                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Specification Attachment</h3>
+                    <div className="flex items-center justify-between p-3 bg-brand-50/50 border border-brand-200/80 rounded-xl">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold">
+                          <Paperclip className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900 block">{filename}</span>
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${tagStyle}`}>
+                              {typeTag}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500">{typeLabel}</span>
+                        </div>
                       </div>
+
+                      <a
+                        href={activeAttachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-xs"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download Spec</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Co-Assignees & Pending Invitations Section */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
+                    <Users className="w-4 h-4 text-brand-600" />
+                    Assigned Members & Co-Assignees ({coAssignees.length + 1})
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs font-semibold text-brand-600 border-brand-200 hover:bg-brand-50"
+                    leftIcon={<UserPlus className="w-3.5 h-3.5" />}
+                    onClick={() => {
+                      loadAvailableMembers();
+                      setShowInviteModal(true);
+                    }}
+                  >
+                    + Request Co-Assignee
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {/* Primary Assignee Badge */}
+                  <div className="flex items-center gap-2 p-2 bg-brand-50 border border-brand-200 rounded-xl">
+                    <Avatar name={task.assignee?.name || 'Assignee'} size="xs" />
+                    <div>
+                      <span className="text-xs font-bold text-brand-900 block leading-none">{task.assignee?.name || 'Primary'}</span>
+                      <span className="text-[10px] text-brand-600 font-semibold">Primary Lead</span>
+                    </div>
+                  </div>
+
+                  {/* Active Co-Assignees */}
+                  {coAssignees.map((ca, idx) => (
+                    <div key={ca.id || idx} className="flex items-center gap-2 p-2 bg-slate-100 border border-slate-200 rounded-xl">
+                      <Avatar name={ca.name} src={ca.avatar} size="xs" />
                       <div>
-                        <span className="text-xs font-bold text-amber-900 block leading-none">{inv.targetUserEmail}</span>
-                        <span className="text-[10px] text-amber-700 font-semibold">Invitation Pending Acceptance</span>
+                        <span className="text-xs font-bold text-slate-800 block leading-none">{ca.name}</span>
+                        <span className="text-[10px] text-slate-500 font-medium">Co-Assignee</span>
                       </div>
                     </div>
                   ))}
+
+                  {/* Pending Invitations */}
+                  {pendingInvitations
+                    .filter((inv) => inv.status === 'Pending')
+                    .map((inv) => (
+                      <div key={inv.id} className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200/80 rounded-xl">
+                        <div className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center font-bold text-[10px]">
+                          ?
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-amber-900 block leading-none">{inv.targetUserEmail}</span>
+                          <span className="text-[10px] text-amber-700 font-semibold">Invitation Pending Acceptance</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 2: TIMELINE */}
         {activeTab === 'timeline' && (

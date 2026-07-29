@@ -514,7 +514,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   </button>
                 </div>
               ) : (
-                <span className="text-[11px] text-slate-400">PDF, PNG, JPG, ZIP, or DOC spec sheets</span>
+                <span className="text-[11px] text-slate-500 font-medium">Supports all file types (PDF, Word, Excel, PPTX, ZIP, CAD, Images, etc.)</span>
               )}
             </div>
           </div>

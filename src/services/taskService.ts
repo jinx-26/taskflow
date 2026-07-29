@@ -45,24 +45,47 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
+        const isUuid = (val?: string | null) =>
+          typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
         dbTasks = data.map((t: any) => {
           let attachmentUrl = t.attachment_url || null;
           let attachmentName = t.attachment_name || null;
+          let cleanDescription = t.description || '';
 
           // Fallback: extract attachment URL and name from description if embedded
-          if (!attachmentUrl && t.description && t.description.includes('📎 Attachment:')) {
-            const match = t.description.match(/📎 Attachment: \[(.*?)\]\((.*?)\)/);
+          if (cleanDescription.includes('📎 Attachment:')) {
+            const match = cleanDescription.match(/📎 Attachment: \[(.*?)\]\((.*?)\)/);
             if (match) {
-              attachmentName = match[1];
-              attachmentUrl = match[2];
+              if (!attachmentName) attachmentName = match[1];
+              if (!attachmentUrl) attachmentUrl = match[2];
             }
+            // Strip out raw attachment link string from description
+            cleanDescription = cleanDescription
+              .replace(/📎 Attachment: \[(.*?)\]\((.*?)\)/g, '')
+              .trim();
+          }
+
+          // Resolve human readable creator name
+          let creatorName = t.created_by_name;
+          if (!creatorName && Array.isArray(t.activity_log)) {
+            const createLog = t.activity_log.find((l: any) => l.action && l.action.toLowerCase().includes('created task'));
+            if (createLog && createLog.userName) {
+              creatorName = createLog.userName;
+            }
+          }
+          if (!creatorName && t.created_by && !isUuid(t.created_by)) {
+            creatorName = t.created_by;
+          }
+          if (!creatorName) {
+            creatorName = 'Workspace Manager';
           }
 
           return {
             id: t.id,
             code: t.code || 'TSK-101',
             title: t.title,
-            description: t.description || '',
+            description: cleanDescription,
             issueType: t.issue_type || 'Task',
             project: t.project || 'General',
             priority: t.priority || 'Medium',
@@ -76,7 +99,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
             pendingInvitations: t.pending_invitations || [],
             subtasks: t.subtasks || [],
             activityLog: t.activity_log || [],
-            createdBy: t.created_by || t.created_by_name || 'Workspace Member',
+            createdBy: creatorName,
             createdAt: t.created_at,
             dueDate: formatDisplayDate(t.due_date),
             comments: t.comments || [],
