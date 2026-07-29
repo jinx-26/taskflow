@@ -42,7 +42,7 @@ export const Tasks: React.FC = () => {
   const [filterMode, setFilterMode] = useState<'assignedToMe' | 'all'>(
     isManagerOrAdmin ? 'all' : 'assignedToMe'
   );
-  const [viewMode, setViewMode] = useState<'board' | 'table'>('board');
+  const [viewMode, setViewMode] = useState<'board' | 'table'>('table');
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals & Action Message State
@@ -308,15 +308,6 @@ export const Tasks: React.FC = () => {
 
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
             <button
-              onClick={() => setViewMode('board')}
-              className={`p-1.5 rounded-lg transition-all ${
-                viewMode === 'board' ? 'bg-white text-brand-600 shadow-soft-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-              title="Kanban Board View"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
               onClick={() => setViewMode('table')}
               className={`p-1.5 rounded-lg transition-all ${
                 viewMode === 'table' ? 'bg-white text-brand-600 shadow-soft-xs' : 'text-slate-500 hover:text-slate-800'
@@ -324,6 +315,15 @@ export const Tasks: React.FC = () => {
               title="Spreadsheet Table View"
             >
               <ListFilter className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'board' ? 'bg-white text-brand-600 shadow-soft-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Kanban Board View"
+            >
+              <LayoutGrid className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -346,7 +346,76 @@ export const Tasks: React.FC = () => {
             </p>
           </CardContent>
         </Card>
-      ) : viewMode === 'board' ? (
+      ) : viewMode === 'table' ? (
+        /* Table / Row List View */
+        <Card className="overflow-x-auto border border-slate-200/90 shadow-soft-xs">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase bg-slate-50/80">
+                <th className="p-3.5">Task ID</th>
+                <th className="p-3.5">Task Name</th>
+                <th className="p-3.5">Assigned By</th>
+                <th className="p-3.5">Assigned To</th>
+                <th className="p-3.5">Due Date</th>
+                <th className="p-3.5">Priority</th>
+                <th className="p-3.5">Completed Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {filteredTasks.map((t) => (
+                <tr
+                  key={t.id}
+                  onClick={() => {
+                    setSelectedTask(t);
+                    setDetailsModalOpen(true);
+                  }}
+                  className="hover:bg-brand-50/30 cursor-pointer transition-colors"
+                >
+                  <td className="p-3.5 font-bold text-brand-700 whitespace-nowrap">
+                    <span className="bg-brand-50 px-2 py-0.5 rounded border border-brand-200/60">
+                      {t.code}
+                    </span>
+                  </td>
+                  <td className="p-3.5 font-bold text-slate-900">
+                    <div>
+                      <div className="leading-snug">{t.title}</div>
+                      <div className="text-[10px] font-normal text-slate-400 mt-0.5">{t.project || 'Standalone Task'}</div>
+                    </div>
+                  </td>
+                  <td className="p-3.5 font-semibold text-slate-700 whitespace-nowrap">
+                    {t.createdBy || 'Workspace Manager'}
+                  </td>
+                  <td className="p-3.5 font-bold text-slate-800 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <Avatar name={t.assignee?.name || 'Assignee'} size="xs" />
+                      <span>{t.assignee?.name || 'Unassigned'}</span>
+                    </div>
+                  </td>
+                  <td className="p-3.5 text-slate-600 font-medium whitespace-nowrap">{t.dueDate}</td>
+                  <td className="p-3.5 whitespace-nowrap">
+                    <Badge
+                      variant={
+                        t.priority === 'Urgent'
+                          ? 'danger'
+                          : t.priority === 'High'
+                          ? 'warning'
+                          : 'neutral'
+                      }
+                    >
+                      {t.priority}
+                    </Badge>
+                  </td>
+                  <td className="p-3.5 whitespace-nowrap">
+                    <Badge variant={t.status === 'Done' ? 'primary' : t.status === 'In Progress' ? 'warning' : 'neutral'}>
+                      {t.status}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      ) : (
         /* Board View */
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {['Todo', 'In Progress', 'In Review', 'Done'].map((status) => {
@@ -400,47 +469,6 @@ export const Tasks: React.FC = () => {
             );
           })}
         </div>
-      ) : (
-        /* Table View */
-        <Card className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase bg-slate-50/50">
-                <th className="p-3">Task Code</th>
-                <th className="p-3">Title</th>
-                <th className="p-3">Project</th>
-                <th className="p-3">Type</th>
-                <th className="p-3">Priority</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Assignee</th>
-                <th className="p-3">Due Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredTasks.map((t) => (
-                <tr
-                  key={t.id}
-                  onClick={() => {
-                    setSelectedTask(t);
-                    setDetailsModalOpen(true);
-                  }}
-                  className="hover:bg-slate-50 cursor-pointer transition-colors"
-                >
-                  <td className="p-3 font-bold text-brand-700">{t.code}</td>
-                  <td className="p-3 font-bold text-slate-900">{t.title}</td>
-                  <td className="p-3 text-slate-600 font-medium">{t.project || 'Standalone'}</td>
-                  <td className="p-3 text-slate-600">{t.issueType || 'General Task'}</td>
-                  <td className="p-3 font-semibold">{t.priority}</td>
-                  <td className="p-3">
-                    <Badge variant={t.status === 'Done' ? 'primary' : 'neutral'}>{t.status}</Badge>
-                  </td>
-                  <td className="p-3 font-bold text-slate-800">{t.assignee?.name || 'Unassigned'}</td>
-                  <td className="p-3 text-slate-500">{t.dueDate}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
       )}
 
       {/* Modals */}
