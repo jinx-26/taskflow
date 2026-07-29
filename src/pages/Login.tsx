@@ -189,8 +189,7 @@ export const Login: React.FC = () => {
               >
                 <option value="Manager">Manager (Project & Team Management)</option>
                 <option value="Lead">Lead (Technical Lead)</option>
-                <option value="Member">Member (Software Engineer / Team Member)</option>
-                <option value="Viewer">Viewer (Read-Only Access)</option>
+                <option value="Member">Engineer (Software Engineer / Team Member)</option>
               </select>
             </div>
           </>
@@ -240,7 +239,7 @@ export const Login: React.FC = () => {
           isLoading={isLoading}
           rightIcon={<ArrowRight className="w-4 h-4" />}
         >
-          {mode === 'signin' ? 'Sign In to Workspace' : `Submit Registration Request (${role})`}
+          {mode === 'signin' ? 'Sign In to Workspace' : `Submit Registration Request (${role === 'Member' ? 'Engineer' : role})`}
         </Button>
       </form>
     </div>

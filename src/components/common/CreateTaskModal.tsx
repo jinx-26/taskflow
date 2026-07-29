@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { X, CheckSquare, User, Calendar, Tag, AlertCircle, FileText, Clock, Layers, Users, Check } from 'lucide-react';
+import { X, CheckSquare, User, Calendar, Tag, AlertCircle, FileText, Clock, Layers, Users, Check, Upload, Paperclip } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sendNotification } from '../../services/notificationService';
-import { UserProfile, IssueType } from '../../types';
+import { UserProfile, IssueType, CollaborationRequest } from '../../types';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -18,7 +18,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   onClose,
   onTaskCreated,
 }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, userRole } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [issueType, setIssueType] = useState<IssueType>('General Task');
@@ -31,10 +31,15 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   
+  // File Attachment State
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+
   const [workspaceMembers, setWorkspaceMembers] = useState<UserProfile[]>([]);
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
   const [assignAll, setAssignAll] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
 
   const loadWorkspaceMembers = async () => {
     try {
@@ -80,6 +85,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       loadWorkspaceMembers();
+      setAttachedFile(null);
     }
   }, [isOpen]);
 
@@ -125,16 +131,66 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       avatar_url: profile?.avatar_url,
     };
 
-    const coAssigneesList = workspaceMembers
-      .filter((m) => selectedAssigneeIds.includes(m.id) && m.id !== primaryAssigneeObj.id)
-      .map((m) => ({
+    // Co-Assignee Permission Flow:
+    // Secondary selected assignees are created as Pending Invitations requiring approval unless created by Manager/Admin
+    const secondaryMembers = workspaceMembers.filter(
+      (m) => selectedAssigneeIds.includes(m.id) && m.id !== primaryAssigneeObj.id
+    );
+
+    let coAssigneesList: any[] = [];
+    let pendingInvitesList: CollaborationRequest[] = [];
+
+    if (isManagerOrAdmin) {
+      // Managers can directly assign co-assignees
+      coAssigneesList = secondaryMembers.map((m) => ({
         id: m.id,
         name: m.full_name,
         avatar: m.avatar_url,
         role: m.role,
       }));
+    } else {
+      // Members/Engineers must send collaboration invites that require target user acceptance
+      pendingInvitesList = secondaryMembers.map((m) => ({
+        id: `inv-${Date.now()}-${m.id}`,
+        taskId: '',
+        taskCode: taskCode,
+        taskTitle: title.trim(),
+        invitedByName: profile?.full_name || 'Member',
+        invitedById: user.id,
+        targetUserId: m.id,
+        targetUserEmail: m.full_name,
+        status: 'Pending',
+        createdAt: new Date().toISOString(),
+      }));
+    }
 
-    const newTaskData = {
+    // Handle File Upload to Supabase Storage if attached
+    let uploadedFileUrl = '';
+    let uploadedFileName = '';
+
+    if (attachedFile) {
+      uploadedFileName = attachedFile.name;
+      if (isSupabaseConfigured) {
+        try {
+          const filePath = `tasks/${Date.now()}_${attachedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+          const { error: uploadErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(filePath, attachedFile);
+
+          if (!uploadErr) {
+            const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
+            uploadedFileUrl = pubData.publicUrl;
+          }
+        } catch (storageErr) {
+          console.warn('File upload storage error, falling back:', storageErr);
+        }
+      }
+      if (!uploadedFileUrl) {
+        uploadedFileUrl = URL.createObjectURL(attachedFile);
+      }
+    }
+
+    const newTaskData: any = {
       code: taskCode,
       title: title.trim(),
       description: description.trim(),
@@ -146,15 +202,20 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       assignee_name: primaryAssigneeObj.full_name,
       assignee_avatar: primaryAssigneeObj.avatar_url || '',
       co_assignees: coAssigneesList,
+      pending_invitations: pendingInvitesList,
+      attachment_url: uploadedFileUrl || null,
+      attachment_name: uploadedFileName || null,
       part_number: partNumber.trim() || null,
       hardware_rev: hardwareRev.trim() || null,
       created_by: user.id,
+      created_by_name: profile?.full_name || 'Member',
       due_date: dueDate,
       activity_log: [
         {
           id: `log-${Date.now()}`,
           userName: profile?.full_name || 'Member',
-          action: `created task ${taskCode}.`,
+          userAvatar: profile?.avatar_url,
+          action: `created task ${taskCode}${attachedFile ? ' with attachment (' + attachedFile.name + ')' : ''}.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ],
@@ -166,19 +227,26 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
         if (error) throw error;
 
-        // Notify assignees
-        selectedAssigneeIds.forEach(async (targetId) => {
-          const targetMem = workspaceMembers.find((m) => m.id === targetId);
-          if (targetMem) {
-            await sendNotification({
-              recipientEmail: targetMem.full_name,
-              senderName: profile?.full_name || 'Member',
-              title: `New Task Assignment: ${taskCode}`,
-              message: `You were assigned to task "${title.trim()}".`,
-              taskCode,
-              type: 'assignment',
-            });
-          }
+        // Notify primary assignee
+        await sendNotification({
+          recipientEmail: primaryAssigneeObj.full_name,
+          senderName: profile?.full_name || 'Member',
+          title: `New Task Assignment: ${taskCode}`,
+          message: `You were assigned to task "${title.trim()}".`,
+          taskCode,
+          type: 'assignment',
+        });
+
+        // Notify secondary members with collaboration requests
+        secondaryMembers.forEach(async (targetMem) => {
+          await sendNotification({
+            recipientEmail: targetMem.full_name,
+            senderName: profile?.full_name || 'Member',
+            title: `Task Collaboration Request: ${taskCode}`,
+            message: `${profile?.full_name || 'A team member'} requested your collaboration on task "${title.trim()}". Please accept or decline.`,
+            taskCode,
+            type: 'collab_request',
+          });
         });
 
         if (onTaskCreated && data) onTaskCreated(data);
@@ -196,6 +264,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       setSuccessMsg('');
       setTitle('');
       setDescription('');
+      setAttachedFile(null);
       onClose();
     }, 1200);
   };
@@ -362,6 +431,43 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                     </label>
                   );
                 })
+              )}
+            </div>
+          </div>
+
+          {/* File Attachment Input */}
+          <div className="space-y-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+              Attach Specification Document / Diagram (Optional)
+            </label>
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-colors">
+                <Upload className="w-4 h-4 text-slate-500" />
+                <span>{attachedFile ? 'Change File' : 'Choose File...'}</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setAttachedFile(e.target.files[0]);
+                    }
+                  }}
+                />
+              </label>
+              {attachedFile ? (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-brand-50 text-brand-700 rounded-lg text-xs font-medium border border-brand-200 truncate max-w-xs">
+                  <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{attachedFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachedFile(null)}
+                    className="text-brand-400 hover:text-brand-700 ml-1 font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-slate-400">PDF, PNG, JPG, ZIP, or DOC spec sheets</span>
               )}
             </div>
           </div>

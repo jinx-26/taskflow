@@ -28,6 +28,8 @@ import {
   Check,
   X,
   Trash2,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { TaskPlaceholder, UserProfile } from '../types';
@@ -61,12 +63,86 @@ export const Projects: React.FC = () => {
   const [projectsList, setProjectsList] = useState<Project[]>([]);
   const [myProjectMemberIds, setMyProjectMemberIds] = useState<string[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [activeTab, setActiveTab] = useState<'summary' | 'timeline' | 'board' | 'list' | 'files'>('board');
+  const [activeTab, setActiveTab] = useState<'summary' | 'timeline' | 'board' | 'list' | 'files' | 'discussion'>('board');
   const [tasks, setTasks] = useState<TaskPlaceholder[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Project Comments & Real-Time WebSockets State
+  const [projectComments, setProjectComments] = useState<any[]>([]);
+  const [newProjectComment, setNewProjectComment] = useState('');
+
+  const loadProjectComments = async (projectId: string) => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const { data, error } = await supabase
+        .from('project_comments')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setProjectComments(data);
+      }
+    } catch (e) {
+      console.warn('Could not load project comments:', e);
+    }
+  };
+
+  // Real-Time WebSocket Channel for Project Discussions
+  useEffect(() => {
+    if (!isSupabaseConfigured || !selectedProject?.id) return;
+
+    loadProjectComments(selectedProject.id);
+
+    const channel = supabase
+      .channel(`project_comments_live_${selectedProject.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'project_comments',
+          filter: `project_id=eq.${selectedProject.id}`,
+        },
+        () => {
+          loadProjectComments(selectedProject.id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedProject?.id]);
+
+  const handleSendProjectComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectComment.trim() || !selectedProject || !profile) return;
+
+    const commentObj = {
+      id: `pcomm-${Date.now()}`,
+      project_id: selectedProject.id,
+      author_id: user?.id,
+      author_name: profile.full_name || 'Team Member',
+      author_avatar: profile.avatar_url,
+      text: newProjectComment.trim(),
+      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setProjectComments((prev) => [commentObj, ...prev]);
+    setNewProjectComment('');
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('project_comments').insert([commentObj]);
+      } catch (err) {
+        console.warn('Project comment insert error:', err);
+      }
+    }
+  };
 
   // Modals state
   const [selectedTask, setSelectedTask] = useState<TaskPlaceholder | null>(null);
@@ -538,6 +614,7 @@ export const Projects: React.FC = () => {
               { id: 'board', label: 'Board', icon: FolderKanban },
               { id: 'list', label: 'List', icon: ListFilter },
               { id: 'files', label: 'Files & Specs', icon: FileText },
+              { id: 'discussion', label: 'Discussion', icon: MessageSquare },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -689,38 +766,31 @@ export const Projects: React.FC = () => {
           {/* Sub-tab 5: Files & Specs (REAL SUPABASE STORAGE PERSISTENCE & PRIVACY) */}
           {activeTab === 'files' && (
             <Card className="p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <FileText className="w-5 h-5 text-brand-600" />
-                    Private Project Documents & Technical Specs
+                    Private Project Files & Specifications
                   </h3>
                   <p className="text-xs text-slate-500">
-                    PDF datasheets, Excel BOMs, and Word specs for <strong>{selectedProject.name}</strong> only.
+                    Proprietary documentation uploaded for members of <strong>{selectedProject.name}</strong>.
                   </p>
                 </div>
 
-                <label className="cursor-pointer">
-                  <span className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-600 text-white font-bold text-xs shadow-soft hover:bg-brand-700 transition-colors">
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-4 h-4" /> Upload Document
-                      </>
-                    )}
-                  </span>
-                  <input type="file" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
+                <label className="cursor-pointer border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 transition-colors">
+                  <Upload className="w-4 h-4 text-brand-600" />
+                  <span>{isUploading ? 'Uploading...' : 'Upload Document'}</span>
+                  <input type="file" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
                 </label>
               </div>
 
               {projectFiles.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 space-y-2">
-                  <FileText className="w-10 h-10 mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-700">No Documents Uploaded for this Project Yet</p>
-                  <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                <div className="p-8 border border-dashed border-slate-200 rounded-2xl text-center space-y-2 bg-slate-50/50">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-700">No project files uploaded yet</h4>
+                  <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
                     Click "Upload Document" above to attach PDF, Excel, or Word spec sheets. Documents are strictly visible only to members of <strong>{selectedProject.name}</strong>.
                   </p>
                 </div>
@@ -747,6 +817,62 @@ export const Projects: React.FC = () => {
                   ))}
                 </div>
               )}
+            </Card>
+          )}
+
+          {/* Sub-tab 6: Discussion & Team Chat */}
+          {activeTab === 'discussion' && (
+            <Card className="p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-brand-600" />
+                    Team Discussion & Project Comments
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Collaborate and discuss requirements for <strong>{selectedProject.name}</strong>.
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  Realtime WebSockets Active
+                </span>
+              </div>
+
+              <form onSubmit={handleSendProjectComment} className="flex items-center gap-2">
+                <Avatar name={profile?.full_name || 'User'} src={profile?.avatar_url} size="sm" />
+                <input
+                  type="text"
+                  value={newProjectComment}
+                  onChange={(e) => setNewProjectComment(e.target.value)}
+                  placeholder={`Post a comment for ${selectedProject.name} team (syncs live)...`}
+                  className="flex-1 rounded-xl border border-slate-200 p-2.5 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+                <Button type="submit" variant="primary" size="sm" leftIcon={<Send className="w-3.5 h-3.5" />}>
+                  Post Comment
+                </Button>
+              </form>
+
+              <div className="space-y-3 pt-2">
+                {projectComments.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-100">
+                    No project comments posted yet. Start the team conversation!
+                  </div>
+                ) : (
+                  projectComments.map((comm) => (
+                    <div key={comm.id} className="p-3.5 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <Avatar name={comm.author_name || 'Member'} src={comm.author_avatar} size="xs" />
+                          <span className="font-bold text-slate-900">{comm.author_name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">{comm.created_at}</span>
+                      </div>
+                      <p className="text-xs text-slate-700 pl-8 leading-relaxed">{comm.text || comm.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </Card>
           )}
         </div>

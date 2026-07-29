@@ -60,8 +60,11 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
       subtasks: t.subtasks || [],
       activityLog: t.activity_log || [],
       createdBy: t.created_by_name || 'Workspace Member',
+      createdAt: t.created_at,
       dueDate: formatDisplayDate(t.due_date),
       comments: t.comments || [],
+      attachmentUrl: t.attachment_url,
+      attachmentName: t.attachment_name,
       isDeleted: t.is_deleted || false,
       estimatedHours: t.estimated_hours || 0,
       loggedHours: t.logged_hours || 0,
@@ -119,10 +122,24 @@ export async function inviteCoAssignee(
     const existingInvites = task.pendingInvitations || [];
     const updatedInvites = [...existingInvites, newInvite];
 
-    // Update task pending invitations
+    // Log timeline activity
+    const existingLogs = task.activityLog || [];
+    const newLog = {
+      id: `log-${Date.now()}`,
+      userName: inviter.full_name,
+      userAvatar: inviter.avatar_url,
+      action: `sent a collaboration invitation to ${target.full_name}.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    const updatedLogs = [newLog, ...existingLogs];
+
+    // Update task pending invitations & activity log
     await supabase
       .from('tasks')
-      .update({ pending_invitations: updatedInvites })
+      .update({
+        pending_invitations: updatedInvites,
+        activity_log: updatedLogs,
+      })
       .eq('id', task.id);
 
     // Send real-time notification to target user

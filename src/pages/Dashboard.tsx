@@ -43,9 +43,23 @@ export const Dashboard: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Time-aware greeting
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  // Time-aware dynamic greeting
+  const getGreeting = () => {
+    const currentHour = new Date().getHours();
+    if (currentHour >= 5 && currentHour < 12) return 'Good morning';
+    if (currentHour >= 12 && currentHour < 17) return 'Good afternoon';
+    if (currentHour >= 17 && currentHour < 22) return 'Good evening';
+    return 'Good night';
+  };
+
+  const [greeting, setGreeting] = useState(getGreeting());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setGreeting(getGreeting());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
@@ -86,17 +100,71 @@ export const Dashboard: React.FC = () => {
     }
   }, []);
 
-  const completedCount = tasks.filter((t) => t.status === 'Done').length;
-  const inProgressCount = tasks.filter((t) => t.status === 'In Progress' || t.status === 'In Review').length;
-  const pendingCount = tasks.filter((t) => t.status === 'Todo' || t.status === 'Backlog').length;
+  const isMember = profile?.role === 'Member' || profile?.role === 'Lead';
 
-  const velocityGraphData = [
-    { day: 'Mon', tasks: Math.max(1, tasks.length - 3), completed: Math.max(0, completedCount - 2) },
-    { day: 'Tue', tasks: Math.max(2, tasks.length - 2), completed: Math.max(1, completedCount - 1) },
-    { day: 'Wed', tasks: Math.max(3, tasks.length - 1), completed: Math.max(1, completedCount) },
-    { day: 'Thu', tasks: tasks.length, completed: completedCount },
-    { day: 'Fri', tasks: tasks.length + 1, completed: completedCount + 1 },
-  ];
+  // Filter tasks assigned to or created by current user if role is Member / Lead
+  const myTasks = tasks.filter(
+    (t) =>
+      t.assignee?.id === user?.id ||
+      (t.assignee?.name && t.assignee.name.toLowerCase() === displayName.toLowerCase()) ||
+      t.coAssignees?.some((c) => c.id === user?.id || (c.name && c.name.toLowerCase() === displayName.toLowerCase()))
+  );
+
+  const relevantTasks = isMember ? myTasks : tasks;
+
+  const completedCount = relevantTasks.filter((t) => t.status === 'Done').length;
+  const inProgressCount = relevantTasks.filter((t) => t.status === 'In Progress' || t.status === 'In Review').length;
+  const pendingCount = relevantTasks.filter((t) => t.status === 'Todo' || t.status === 'Backlog').length;
+
+  // Real 7-day task velocity graph calculation
+  const velocityGraphData = React.useMemo(() => {
+    const days: { day: string; tasks: number; completed: number }[] = [];
+    const today = new Date();
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      // Tasks created/assigned on this day
+      const tasksOnDay = relevantTasks.filter((t) => {
+        if (!t.createdAt) return false;
+        return t.createdAt.startsWith(dateStr);
+      }).length;
+
+      // Tasks completed on this day
+      const completedOnDay = relevantTasks.filter((t) => {
+        if (t.status !== 'Done') return false;
+        if (t.createdAt && t.createdAt.startsWith(dateStr)) return true;
+        return t.activityLog?.some(
+          (log) => log.action?.toLowerCase().includes('done') && log.timestamp?.startsWith(dateStr)
+        ) || false;
+      }).length;
+
+      days.push({
+        day: dayName,
+        tasks: tasksOnDay,
+        completed: completedOnDay,
+      });
+    }
+
+    const hasRecentActivity = days.some((d) => d.tasks > 0 || d.completed > 0);
+    if (!hasRecentActivity && relevantTasks.length > 0) {
+      const todayName = today.toLocaleDateString('en-US', { weekday: 'short' });
+      return days.map((d) =>
+        d.day === todayName
+          ? { day: d.day, tasks: relevantTasks.length, completed: completedCount }
+          : d
+      );
+    }
+
+    return days;
+  }, [relevantTasks, completedCount]);
 
   return (
     <div className="space-y-6 animate-in fade-in-50 duration-200">
@@ -137,13 +205,15 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card hoverEffect className="p-5 border-slate-200/80">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Active Tasks</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              {isMember ? 'My Assigned Tasks' : 'Total Active Tasks'}
+            </span>
             <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold">
               <FolderKanban className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900">{tasks.length}</span>
+            <span className="text-3xl font-black text-slate-900">{relevantTasks.length}</span>
             <span className="text-xs text-brand-700 font-semibold">Active Items</span>
           </div>
         </Card>
@@ -197,10 +267,12 @@ export const Dashboard: React.FC = () => {
               <div>
                 <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-brand-600" />
-                  Task Velocity & Completion Graph
+                  {isMember ? 'My Task Velocity & Completion' : 'Workspace Task Velocity & Completion'}
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  Weekly task creation vs completed deliverables.
+                  {isMember
+                    ? 'Daily tasks assigned vs completed by you (Last 7 Days).'
+                    : 'Daily task creation vs completed deliverables across teams (Last 7 Days).'}
                 </CardDescription>
               </div>
               <Badge variant="primary">Realtime</Badge>
@@ -223,7 +295,7 @@ export const Dashboard: React.FC = () => {
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <Tooltip />
-                <Area type="monotone" dataKey="tasks" stroke="#4f46e5" strokeWidth={2} fillOpacity={1} fill="url(#colorTasks)" name="Total Tasks" />
+                <Area type="monotone" dataKey="tasks" stroke="#4f46e5" strokeWidth={2} fillOpacity={1} fill="url(#colorTasks)" name={isMember ? "Assigned Tasks" : "Total Tasks"} />
                 <Area type="monotone" dataKey="completed" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorCompleted)" name="Completed" />
               </AreaChart>
             </ResponsiveContainer>

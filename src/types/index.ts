@@ -212,6 +212,7 @@ export interface TaskPlaceholder {
   activityLog?: TaskActivityLog[];
   comments?: any[];
   dueDate: string;
+  createdAt?: string;
   createdBy?: string;
   isDeleted?: boolean;
   deletedAt?: string;
@@ -220,9 +221,21 @@ export interface TaskPlaceholder {
   loggedHours?: number;
   partNumber?: string;
   hardwareRev?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
   testResult?: 'Pending' | 'Pass' | 'Fail' | 'Retest';
   requiresManagerApproval?: boolean;
   isApproved?: boolean;
   approvedBy?: string;
   blockedByTaskId?: string;
+}
+
+export interface ProjectComment {
+  id: string;
+  project_id: string;
+  author_id?: string;
+  author_name: string;
+  author_avatar?: string;
+  text: string;
+  created_at: string;
 }
