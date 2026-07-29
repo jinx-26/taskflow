@@ -24,6 +24,7 @@ import {
   MessageSquare,
   UserCheck,
   Mail,
+  Upload,
 } from 'lucide-react';
 import { TaskPlaceholder, UserProfile, TaskCoAssignee, IssueType, CollaborationRequest } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
@@ -61,9 +62,18 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   const [availableMembers, setAvailableMembers] = useState<UserProfile[]>([]);
   const [selectedInviteUser, setSelectedInviteUser] = useState<UserProfile | null>(null);
 
+  // Review File Upload & 2-Step Deletion Modal State
+  const [isUploadingReviewFile, setIsUploadingReviewFile] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+
   const [successMsg, setSuccessMsg] = useState('');
 
-  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
+  const isManagerOrAdmin =
+    userRole === 'Admin' ||
+    userRole === 'Manager' ||
+    profile?.role === 'Admin' ||
+    profile?.role === 'Manager' ||
+    user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
 
   const loadAvailableMembers = async () => {
     try {
@@ -99,6 +109,90 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           status: 'Approved',
         },
       ]);
+    }
+  };
+
+  // Handler for post-creation file uploads for review
+  const handleUploadReviewFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const filesToUpload = Array.from(e.target.files).slice(0, 10);
+    setIsUploadingReviewFile(true);
+
+    const newAttachments: Array<{ name: string; url: string }> = [];
+
+    for (const file of filesToUpload) {
+      let fileUrl = '';
+      if (isSupabaseConfigured) {
+        try {
+          const filePath = `tasks/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+          const { error: uploadErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(filePath, file);
+
+          if (!uploadErr) {
+            const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
+            fileUrl = pubData.publicUrl;
+          }
+        } catch (storageErr) {
+          console.warn('Review upload storage warning:', storageErr);
+        }
+      }
+      if (!fileUrl) {
+        fileUrl = URL.createObjectURL(file);
+      }
+      newAttachments.push({ name: file.name, url: fileUrl });
+    }
+
+    // Append new markdown attachment links to description
+    const newMarkdownLinks = newAttachments
+      .map((f) => `📎 Attachment: [${f.name}](${f.url})`)
+      .join('\n');
+
+    const updatedDescription = description
+      ? `${description.trim()}\n\n${newMarkdownLinks}`
+      : newMarkdownLinks;
+
+    setDescription(updatedDescription);
+
+    // Add activity log entries for uploaded files
+    const logEntries = newAttachments.map((f) => ({
+      id: `log-${Date.now()}-${Math.random()}`,
+      userName: profile?.full_name || 'Team Member',
+      userAvatar: profile?.avatar_url,
+      action: `uploaded file for review: "${f.name}".`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }));
+
+    const updatedLogs = [...logEntries, ...activityLog];
+    setActivityLog(updatedLogs);
+
+    if (isSupabaseConfigured) {
+      await supabase
+        .from('tasks')
+        .update({ description: updatedDescription, activity_log: updatedLogs })
+        .eq('id', task.id);
+    }
+
+    setIsUploadingReviewFile(false);
+    setSuccessMsg(`Successfully uploaded ${newAttachments.length} file(s) for review!`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+
+    const updatedTask = { ...task, description: updatedDescription, activityLog: updatedLogs };
+    if (onTaskUpdated) onTaskUpdated(updatedTask);
+    window.dispatchEvent(new CustomEvent('taskflow:task-created', { detail: updatedTask }));
+  };
+
+  // Manager 2-Step Confirmation Task Delete Handler
+  const handleConfirmDeleteTask = async () => {
+    const success = await softDeleteTask(task.id, user?.id, profile?.full_name);
+    setDeleteStep(0);
+    if (success) {
+      setSuccessMsg(`Task ${task.code} deleted successfully.`);
+      window.dispatchEvent(new CustomEvent('taskflow:task-created'));
+      setTimeout(() => {
+        onClose();
+        if (onTaskUpdated) onTaskUpdated({ ...task, isDeleted: true });
+      }, 600);
     }
   };
 
@@ -317,9 +411,22 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             <h2 className="text-xl font-extrabold text-slate-900">{task.title}</h2>
           </div>
 
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isManagerOrAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs font-bold text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 transition-colors"
+                leftIcon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
+                onClick={() => setDeleteStep(1)}
+              >
+                Delete Task
+              </Button>
+            )}
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {successMsg && (
@@ -391,7 +498,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
-        Comments ({comments.length})
+            Comments ({comments.length})
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Real-time WebSockets Live" />
           </button>
         </div>
@@ -402,14 +509,19 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             .replace(/📎 Attachment: \[(.*?)\]\((.*?)\)/g, '')
             .trim();
 
-          let activeAttachmentUrl = task.attachmentUrl || null;
-          let activeAttachmentName = task.attachmentName || null;
+          // Extract all attachment links (from single prop, list prop, or description links)
+          const allAttachmentsList: Array<{ name: string; url: string }> = [];
 
-          if (!activeAttachmentUrl && description && description.includes('📎 Attachment:')) {
-            const match = description.match(/📎 Attachment: \[(.*?)\]\((.*?)\)/);
-            if (match) {
-              activeAttachmentName = match[1];
-              activeAttachmentUrl = match[2];
+          if (task.attachmentUrl) {
+            allAttachmentsList.push({ name: task.attachmentName || 'Attachment', url: task.attachmentUrl });
+          }
+
+          if (description && description.includes('📎 Attachment:')) {
+            const matches = description.matchAll(/📎 Attachment: \[(.*?)\]\((.*?)\)/g);
+            for (const match of matches) {
+              if (!allAttachmentsList.some((a) => a.url === match[2])) {
+                allAttachmentsList.push({ name: match[1], url: match[2] });
+              }
             }
           }
 
@@ -423,69 +535,94 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                 </p>
               </div>
 
-              {/* File Attachment Card if present */}
-              {activeAttachmentUrl && (() => {
-                const filename = activeAttachmentName || 'Attachment';
-                const ext = (filename.split('.').pop() || '').toLowerCase();
-                let typeLabel = 'Attached File';
-                let typeTag = ext.toUpperCase() || 'FILE';
-                let tagStyle = 'bg-slate-100 text-slate-700 border-slate-200';
+              {/* Specification & Post-Creation Review Files Section */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-brand-600" />
+                    Task Specification & Review Files ({allAttachmentsList.length})
+                  </h3>
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold rounded-xl border border-brand-200 transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-brand-600" />
+                    <span>{isUploadingReviewFile ? 'Uploading...' : '+ Upload File(s) for Review'}</span>
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleUploadReviewFiles}
+                      disabled={isUploadingReviewFile}
+                    />
+                  </label>
+                </div>
 
-                if (['pdf'].includes(ext)) {
-                  typeLabel = 'PDF Document';
-                  tagStyle = 'bg-red-50 text-red-700 border-red-200';
-                } else if (['doc', 'docx'].includes(ext)) {
-                  typeLabel = 'Word Document';
-                  tagStyle = 'bg-blue-50 text-blue-700 border-blue-200';
-                } else if (['xls', 'xlsx', 'csv'].includes(ext)) {
-                  typeLabel = 'Excel Spreadsheet';
-                  tagStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                } else if (['ppt', 'pptx'].includes(ext)) {
-                  typeLabel = 'PowerPoint Presentation';
-                  tagStyle = 'bg-amber-50 text-amber-700 border-amber-200';
-                } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-                  typeLabel = 'Compressed Archive (ZIP/RAR)';
-                  tagStyle = 'bg-purple-50 text-purple-700 border-purple-200';
-                } else if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext)) {
-                  typeLabel = 'Image File';
-                  tagStyle = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-                } else if (['cad', 'dwg', 'dxf', 'sch', 'brd', 'pcb'].includes(ext)) {
-                  typeLabel = 'CAD / Hardware Schematic File';
-                  tagStyle = 'bg-cyan-50 text-cyan-700 border-cyan-200';
-                }
+                {allAttachmentsList.length === 0 ? (
+                  <p className="text-xs text-slate-400 p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    No files attached yet. Team members and assignees can click "+ Upload File(s) for Review" above to submit review files.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {allAttachmentsList.map((att, idx) => {
+                      const filename = att.name;
+                      const ext = (filename.split('.').pop() || '').toLowerCase();
+                      let typeLabel = 'Attached File';
+                      let typeTag = ext.toUpperCase() || 'FILE';
+                      let tagStyle = 'bg-slate-100 text-slate-700 border-slate-200';
 
-                return (
-                  <div className="space-y-1.5">
-                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Specification Attachment</h3>
-                    <div className="flex items-center justify-between p-3 bg-brand-50/50 border border-brand-200/80 rounded-xl">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold">
-                          <Paperclip className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900 block">{filename}</span>
-                            <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${tagStyle}`}>
-                              {typeTag}
-                            </span>
+                      if (['pdf'].includes(ext)) {
+                        typeLabel = 'PDF Document';
+                        tagStyle = 'bg-red-50 text-red-700 border-red-200';
+                      } else if (['doc', 'docx'].includes(ext)) {
+                        typeLabel = 'Word Document';
+                        tagStyle = 'bg-blue-50 text-blue-700 border-blue-200';
+                      } else if (['xls', 'xlsx', 'csv'].includes(ext)) {
+                        typeLabel = 'Excel Spreadsheet';
+                        tagStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      } else if (['ppt', 'pptx'].includes(ext)) {
+                        typeLabel = 'PowerPoint Presentation';
+                        tagStyle = 'bg-amber-50 text-amber-700 border-amber-200';
+                      } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+                        typeLabel = 'Compressed Archive (ZIP/RAR)';
+                        tagStyle = 'bg-purple-50 text-purple-700 border-purple-200';
+                      } else if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext)) {
+                        typeLabel = 'Image File';
+                        tagStyle = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                      } else if (['cad', 'dwg', 'dxf', 'sch', 'brd', 'pcb'].includes(ext)) {
+                        typeLabel = 'CAD / Hardware Schematic File';
+                        tagStyle = 'bg-cyan-50 text-cyan-700 border-cyan-200';
+                      }
+
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-brand-50/50 border border-brand-200/80 rounded-xl">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center font-bold">
+                              <Paperclip className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-900 block truncate max-w-xs">{filename}</span>
+                                <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${tagStyle}`}>
+                                  {typeTag}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-500">{typeLabel}</span>
+                            </div>
                           </div>
-                          <span className="text-[10px] text-slate-500">{typeLabel}</span>
-                        </div>
-                      </div>
 
-                      <a
-                        href={activeAttachmentUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-xs"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download Spec</span>
-                      </a>
-                    </div>
+                          <a
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-xs shrink-0"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download Spec</span>
+                          </a>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })()}
+                )}
+              </div>
 
               {/* Co-Assignees & Pending Invitations Section */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
@@ -668,6 +805,76 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                 Send Invitation Request
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2-STEP CONFIRMATION DELETE TASK MODAL */}
+      {deleteStep > 0 && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 select-none">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-red-100 animate-in zoom-in-95">
+            {deleteStep === 1 ? (
+              <>
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black">
+                    ⚠️
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase text-amber-600 tracking-wider">Step 1 of 2 • Manager Safety Check</span>
+                    <h3 className="text-base font-extrabold text-slate-900">Confirm Deletion Request</h3>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Manager Authorization Required: Are you sure you want to delete task <strong className="text-slate-900">{task.code}</strong> ("{task.title}")? This action will remove it from department workspace boards.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <Button variant="outline" size="sm" onClick={() => setDeleteStep(0)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                    onClick={() => setDeleteStep(2)}
+                  >
+                    Proceed to Final Step (2/2) →
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 border-b border-red-100 pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-black">
+                    🚨
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase text-red-600 tracking-wider">Step 2 of 2 • Final Confirmation</span>
+                    <h3 className="text-base font-extrabold text-red-900">Permanent Deletion Warning</h3>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-red-50 text-red-800 rounded-xl text-xs font-medium border border-red-200 space-y-1">
+                  <p className="font-bold">⚠️ Final Safety Confirmation:</p>
+                  <p>Are you ABSOLUTELY sure? This is your SECOND confirmation to delete task <strong>{task.code}</strong>.</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <Button variant="outline" size="sm" onClick={() => setDeleteStep(0)}>
+                    Cancel & Keep Task
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700 border-none text-white font-bold"
+                    onClick={handleConfirmDeleteTask}
+                  >
+                    🔴 Confirm Permanent Deletion
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

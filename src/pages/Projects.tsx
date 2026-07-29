@@ -166,7 +166,40 @@ export const Projects: React.FC = () => {
   const [isSavingMembers, setIsSavingMembers] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
-  const isManagerOrAdmin = userRole === 'Admin' || userRole === 'Manager';
+  // Project 2-Step Deletion State
+  const [projectDeleteStep, setProjectDeleteStep] = useState<0 | 1 | 2>(0);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+
+  const isManagerOrAdmin =
+    userRole === 'Admin' ||
+    userRole === 'Manager' ||
+    profile?.role === 'Admin' ||
+    profile?.role === 'Manager' ||
+    user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+
+  const handleConfirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+    const targetProj = projectToDelete;
+    setProjectDeleteStep(0);
+    setProjectToDelete(null);
+
+    setProjectsList((prev) => prev.filter((p) => p.id !== targetProj.id));
+    if (selectedProject?.id === targetProj.id) {
+      setSelectedProject(null);
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('project_members').delete().eq('project_id', targetProj.id);
+        await supabase.from('projects').delete().eq('id', targetProj.id);
+      } catch (err) {
+        console.warn('Project deletion error:', err);
+      }
+    }
+
+    setToastMsg(`Project "${targetProj.name}" deleted successfully.`);
+    setTimeout(() => setToastMsg(''), 4000);
+  };
 
   const loadProjectsData = async () => {
     setIsLoading(true);
@@ -465,15 +498,30 @@ export const Projects: React.FC = () => {
               </Button>
 
               {isManagerOrAdmin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
-                  leftIcon={<Users className="w-4 h-4 text-brand-600" />}
-                  onClick={() => handleOpenManageMembers(selectedProject)}
-                >
-                  Manage Project Members
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
+                    leftIcon={<Users className="w-4 h-4 text-brand-600" />}
+                    onClick={() => handleOpenManageMembers(selectedProject)}
+                  >
+                    Manage Project Members
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs font-bold border-red-200 text-red-600 hover:bg-red-50"
+                    leftIcon={<Trash2 className="w-4 h-4 text-red-500" />}
+                    onClick={() => {
+                      setProjectToDelete(selectedProject);
+                      setProjectDeleteStep(1);
+                    }}
+                  >
+                    Delete Project
+                  </Button>
+                </>
               )}
             </>
           )}
@@ -586,15 +634,31 @@ export const Projects: React.FC = () => {
                   </span>
 
                   {isManagerOrAdmin ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs text-brand-600 font-bold border-brand-200 hover:bg-brand-50"
-                      leftIcon={<Users className="w-3.5 h-3.5" />}
-                      onClick={(e) => handleOpenManageMembers(proj, e)}
-                    >
-                      Select People & Access
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-brand-600 font-bold border-brand-200 hover:bg-brand-50"
+                        leftIcon={<Users className="w-3.5 h-3.5" />}
+                        onClick={(e) => handleOpenManageMembers(proj, e)}
+                      >
+                        Select People
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-red-600 font-bold border-red-200 hover:bg-red-50 p-1.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProjectToDelete(proj);
+                          setProjectDeleteStep(1);
+                        }}
+                        title="Delete Project"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      </Button>
+                    </div>
                   ) : (
                     <span className="font-semibold text-brand-600 hover:underline">Click to View Details →</span>
                   )}
@@ -1104,6 +1168,75 @@ export const Projects: React.FC = () => {
           task={selectedTask}
           onTaskUpdated={() => fetchLiveTasks().then(setTasks)}
         />
+      )}
+      {/* 2-STEP CONFIRMATION DELETE PROJECT MODAL */}
+      {projectDeleteStep > 0 && projectToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 select-none">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-red-100 animate-in zoom-in-95">
+            {projectDeleteStep === 1 ? (
+              <>
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black">
+                    ⚠️
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase text-amber-600 tracking-wider">Step 1 of 2 • Manager Authorization Check</span>
+                    <h3 className="text-base font-extrabold text-slate-900">Delete Project Request</h3>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Are you sure you want to delete project <strong className="text-slate-900 font-bold">"{projectToDelete.name}"</strong> (Key: {projectToDelete.key})? This action will remove the project from the active directory.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <Button variant="outline" size="sm" onClick={() => { setProjectDeleteStep(0); setProjectToDelete(null); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                    onClick={() => setProjectDeleteStep(2)}
+                  >
+                    Proceed to Final Step (2/2) →
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 border-b border-red-100 pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-black">
+                    🚨
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase text-red-600 tracking-wider">Step 2 of 2 • Final Confirmation</span>
+                    <h3 className="text-base font-extrabold text-red-900">Permanent Project Deletion</h3>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-red-50 text-red-800 rounded-xl text-xs font-medium border border-red-200 space-y-1">
+                  <p className="font-bold">⚠️ Warning: Final Manager Confirmation</p>
+                  <p>Are you ABSOLUTELY sure? This is your SECOND and final confirmation to delete project <strong>"{projectToDelete.name}"</strong>.</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <Button variant="outline" size="sm" onClick={() => { setProjectDeleteStep(0); setProjectToDelete(null); }}>
+                    Cancel & Keep Project
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700 border-none text-white font-bold"
+                    onClick={handleConfirmDeleteProject}
+                  >
+                    🔴 Confirm Permanent Deletion
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
