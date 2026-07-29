@@ -32,24 +32,32 @@
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Dark Mode Theme Global Styles */
+/* Premium Dark Mode Theme Global Styles (Linear & GitHub Dark Inspired) */
 html.dark,
 html.dark body {
-  background-color: #0f172a !important;
+  background-color: #0b0f19 !important;
   color: #f8fafc !important;
 }
 
+/* Structural Containers: Headers, Sidebars, Cards, Modals */
 html.dark header,
-html.dark nav,
 html.dark aside,
 html.dark main,
-html.dark .bg-white,
-html.dark [class*="bg-white"] {
-  background-color: #1e293b !important;
+html.dark .bg-white {
+  background-color: #151c2c !important;
   color: #f1f5f9 !important;
-  border-color: #334155 !important;
+  border-color: #243048 !important;
 }
 
+/* Sub-containers & Secondary Sections */
+html.dark .bg-slate-50,
+html.dark .bg-slate-100 {
+  background-color: #0e1526 !important;
+  color: #cbd5e1 !important;
+  border-color: #243048 !important;
+}
+
+/* Typography Overrides */
 html.dark .text-slate-900,
 html.dark .text-slate-800,
 html.dark .text-slate-700 {
@@ -61,22 +69,120 @@ html.dark .text-slate-500 {
   color: #94a3b8 !important;
 }
 
-html.dark .bg-slate-50,
-html.dark .bg-slate-100 {
-  background-color: #0f172a !important;
+html.dark .text-slate-400 {
+  color: #64748b !important;
+}
+
+/* Borders */
+html.dark .border-slate-200,
+html.dark .border-slate-100 {
+  border-color: #243048 !important;
+}
+
+/* Tables & Table Headers */
+html.dark table {
+  color: #f1f5f9 !important;
+}
+
+html.dark thead,
+html.dark th {
+  background-color: #0e1526 !important;
+  color: #94a3b8 !important;
+  border-color: #243048 !important;
+}
+
+html.dark tr {
+  border-color: #1e293b !important;
+}
+
+html.dark tbody tr:hover {
+  background-color: #1a2336 !important;
+}
+
+/* Form Elements: Inputs, Selects, Textareas */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #0b0f19 !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Targeted Fixes for Badges, Pills & Status Tags in Dark Mode */
+
+/* Brand / Active Badges */
+html.dark .bg-brand-50,
+html.dark .bg-brand-50\/50,
+html.dark .bg-brand-50\/60,
+html.dark .bg-brand-100 {
+  background-color: rgba(79, 70, 229, 0.25) !important;
+  color: #a5b4fc !important;
+  border-color: rgba(99, 102, 241, 0.4) !important;
+}
+
+/* Green / Success / Passed Badges */
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(52, 211, 153, 0.4) !important;
+}
+
+/* Amber / Warning / High Priority Badges */
+html.dark .bg-amber-50,
+html.dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.2) !important;
+  color: #fcd34d !important;
+  border-color: rgba(251, 191, 36, 0.4) !important;
+}
+
+/* Red / Danger / Urgent Badges */
+html.dark .bg-red-50,
+html.dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.2) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+
+/* Purple Badges */
+html.dark .bg-purple-50,
+html.dark .bg-purple-100 {
+  background-color: rgba(168, 85, 247, 0.2) !important;
+  color: #d8b4fe !important;
+  border-color: rgba(192, 132, 252, 0.4) !important;
+}
+
+/* Task Code / Neutral Badges & White Pills in Tables & Cards */
+html.dark .bg-white.text-slate-800,
+html.dark span.bg-white,
+html.dark div.bg-white.p-2,
+html.dark .bg-slate-100.text-slate-700 {
+  background-color: #1e293b !important;
   color: #e2e8f0 !important;
   border-color: #334155 !important;
 }
 
-html.dark input,
-html.dark select,
-html.dark textarea {
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #475569 !important;
+/* Buttons in Dark Mode */
+html.dark button.bg-slate-100 {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
 }
 
-html.dark .border-slate-200,
-html.dark .border-slate-100 {
-  border-color: #334155 !important;
+html.dark button.bg-slate-100:hover {
+  background-color: #334155 !important;
+}
+
+/* Custom Scrollbar for Dark Mode */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
