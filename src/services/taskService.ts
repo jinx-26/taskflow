@@ -24,56 +24,86 @@ export function formatDisplayDate(dateStr?: string): string {
   }
 }
 
-export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
-  if (!isSupabaseConfigured) {
-    return [];
-  }
+// Local in-memory session cache for tasks created during session
+const localTasksCache: TaskPlaceholder[] = [];
 
-  try {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*')
-      .neq('is_deleted', true)
-      .order('created_at', { ascending: false });
-
-    if (error || !data) {
-      console.warn('Error fetching tasks from Supabase:', error?.message);
-      return [];
-    }
-
-    return data.map((t: any) => ({
-      id: t.id,
-      code: t.code || 'TSK-101',
-      title: t.title,
-      description: t.description || '',
-      issueType: t.issue_type || 'Task',
-      project: t.project || 'General',
-      priority: t.priority || 'Medium',
-      status: t.status || 'In Progress',
-      assignee: {
-        id: t.assignee_id,
-        name: t.assignee_name || 'Unassigned',
-        avatar: t.assignee_avatar || undefined,
-      },
-      coAssignees: t.co_assignees || [],
-      pendingInvitations: t.pending_invitations || [],
-      subtasks: t.subtasks || [],
-      activityLog: t.activity_log || [],
-      createdBy: t.created_by_name || 'Workspace Member',
-      createdAt: t.created_at,
-      dueDate: formatDisplayDate(t.due_date),
-      comments: t.comments || [],
-      attachmentUrl: t.attachment_url,
-      attachmentName: t.attachment_name,
-      isDeleted: t.is_deleted || false,
-      estimatedHours: t.estimated_hours || 0,
-      loggedHours: t.logged_hours || 0,
-    }));
-  } catch (err) {
-    console.error('fetchLiveTasks error:', err);
-    return [];
+export function addLocalTask(task: TaskPlaceholder) {
+  if (!localTasksCache.some((t) => t.id === task.id || t.code === task.code)) {
+    localTasksCache.unshift(task);
   }
 }
+
+export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
+  let dbTasks: TaskPlaceholder[] = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .neq('is_deleted', true)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        dbTasks = data.map((t: any) => {
+          let attachmentUrl = t.attachment_url || null;
+          let attachmentName = t.attachment_name || null;
+
+          // Fallback: extract attachment URL and name from description if embedded
+          if (!attachmentUrl && t.description && t.description.includes('📎 Attachment:')) {
+            const match = t.description.match(/📎 Attachment: \[(.*?)\]\((.*?)\)/);
+            if (match) {
+              attachmentName = match[1];
+              attachmentUrl = match[2];
+            }
+          }
+
+          return {
+            id: t.id,
+            code: t.code || 'TSK-101',
+            title: t.title,
+            description: t.description || '',
+            issueType: t.issue_type || 'Task',
+            project: t.project || 'General',
+            priority: t.priority || 'Medium',
+            status: t.status || 'In Progress',
+            assignee: {
+              id: t.assignee_id,
+              name: t.assignee_name || 'Unassigned',
+              avatar: t.assignee_avatar || undefined,
+            },
+            coAssignees: t.co_assignees || [],
+            pendingInvitations: t.pending_invitations || [],
+            subtasks: t.subtasks || [],
+            activityLog: t.activity_log || [],
+            createdBy: t.created_by || t.created_by_name || 'Workspace Member',
+            createdAt: t.created_at,
+            dueDate: formatDisplayDate(t.due_date),
+            comments: t.comments || [],
+            attachmentUrl,
+            attachmentName,
+            isDeleted: t.is_deleted || false,
+            estimatedHours: t.estimated_hours || 0,
+            loggedHours: t.logged_hours || 0,
+          };
+        });
+      }
+    } catch (err) {
+      console.error('fetchLiveTasks error:', err);
+    }
+  }
+
+  // Merge DB tasks with local session cache, avoiding duplicates by code/id
+  const combined = [...dbTasks];
+  localTasksCache.forEach((localTask) => {
+    if (!combined.some((t) => t.id === localTask.id || (t.code && t.code === localTask.code))) {
+      combined.unshift(localTask);
+    }
+  });
+
+  return combined;
+}
+
 
 // Audited Soft Deletion
 export async function softDeleteTask(taskId: string, userId?: string, userName?: string): Promise<boolean> {

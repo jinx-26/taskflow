@@ -332,6 +332,9 @@ export const TopNav: React.FC<TopNavProps> = ({
       <CreateTaskModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
+        onTaskCreated={() => {
+          window.dispatchEvent(new CustomEvent('taskflow:task-created'));
+        }}
       />
     </header>
   );

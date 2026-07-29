@@ -28,10 +28,20 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { fetchLiveTasks, respondToInvite } from '../services/taskService';
 
 export const Tasks: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, userRole } = useAuth();
   const [taskList, setTaskList] = useState<TaskPlaceholder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMode, setFilterMode] = useState<'assignedToMe' | 'all'>('assignedToMe');
+
+  const isManagerOrAdmin =
+    profile?.role === 'Admin' ||
+    profile?.role === 'Manager' ||
+    userRole === 'Admin' ||
+    userRole === 'Manager' ||
+    user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+
+  const [filterMode, setFilterMode] = useState<'assignedToMe' | 'all'>(
+    isManagerOrAdmin ? 'all' : 'assignedToMe'
+  );
   const [viewMode, setViewMode] = useState<'board' | 'table'>('board');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -51,8 +61,15 @@ export const Tasks: React.FC = () => {
   useEffect(() => {
     loadTasks();
 
+    const handleCustomTaskCreated = () => {
+      loadTasks();
+    };
+
+    window.addEventListener('taskflow:task-created', handleCustomTaskCreated);
+
+    let channel: any = null;
     if (isSupabaseConfigured) {
-      const channel = supabase
+      channel = supabase
         .channel('tasks_page_realtime')
         .on(
           'postgres_changes',
@@ -62,12 +79,22 @@ export const Tasks: React.FC = () => {
           }
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
+
+    return () => {
+      window.removeEventListener('taskflow:task-created', handleCustomTaskCreated);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
+
+  // Update default filterMode if profile loads after initial render
+  useEffect(() => {
+    if (isManagerOrAdmin && filterMode === 'assignedToMe' && taskList.length === 0) {
+      setFilterMode('all');
+    }
+  }, [isManagerOrAdmin]);
 
   // Collect all pending co-assignment invitations for the logged in user
   const myPendingInvites: Array<{ task: TaskPlaceholder; invite: CollaborationRequest }> = [];
@@ -105,8 +132,6 @@ export const Tasks: React.FC = () => {
     }
   };
 
-  const isManagerOrAdmin = profile?.role === 'Admin' || profile?.role === 'Manager' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
-
   const filteredTasks = taskList.filter((t) => {
     if (t.isDeleted) return false;
 
@@ -129,7 +154,9 @@ export const Tasks: React.FC = () => {
       const isCoAssignee = t.coAssignees?.some(
         (ca) => ca.id === user.id || (profile?.full_name && ca.name?.toLowerCase() === profile.full_name.toLowerCase())
       );
-      if (!isPrimary && !isCoAssignee) return false;
+      const isCreator = t.createdBy === user.id || (profile?.full_name && t.createdBy?.toLowerCase() === profile.full_name.toLowerCase());
+
+      if (!isPrimary && !isCoAssignee && !isCreator) return false;
     }
 
     // Search query
