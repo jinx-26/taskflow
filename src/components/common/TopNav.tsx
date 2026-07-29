@@ -16,6 +16,8 @@ import {
   ChevronDown,
   Layers,
   Plus,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -35,6 +37,21 @@ export const TopNav: React.FC<TopNavProps> = ({
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Day / Night Theme State (Icon only toggle)
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    return localStorage.getItem('tf_theme') === 'dark' || document.documentElement.classList.contains('dark');
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('tf_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('tf_theme', 'light');
+    }
+  }, [isDark]);
 
   const loadNotifications = async () => {
     if (!user?.email) return;
@@ -145,6 +162,21 @@ export const TopNav: React.FC<TopNavProps> = ({
             ? '🧢 Lead'
             : '👷 Member'}
         </span>
+
+        {/* Day / Night Theme Toggle Button (Icon-only, No Text) */}
+        <button
+          type="button"
+          onClick={() => setIsDark((prev) => !prev)}
+          className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none border border-slate-200/60"
+          title={isDark ? 'Switch to Day Mode' : 'Switch to Night Mode'}
+          aria-label="Toggle theme mode"
+        >
+          {isDark ? (
+            <Sun className="w-5 h-5 text-amber-400" />
+          ) : (
+            <Moon className="w-5 h-5 text-indigo-600" />
+          )}
+        </button>
 
         {/* Quick Assign Task Button */}
         <Button

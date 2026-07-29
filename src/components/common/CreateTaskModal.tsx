@@ -404,9 +404,9 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Category / Issue Type</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Category / Type</label>
               <select
                 value={issueType}
                 onChange={(e) => setIssueType(e.target.value as IssueType)}
@@ -436,65 +436,70 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 <option value="Low">Low</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Due Date *</label>
+              <input
+                type="date"
+                required
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-xl border border-brand-300 bg-brand-50/50 p-2 text-xs font-bold text-brand-900 focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
           </div>
 
-          {/* Due Date Field & Quick Selection Buttons */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
-              <span>Task Due Date *</span>
-              <span className="text-[10px] text-slate-400 font-normal">Completion deadline</span>
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[160px]">
-                <Input
-                  type="date"
-                  required
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full text-xs font-bold text-slate-800 py-1.5"
-                  leftIcon={<Calendar className="w-4 h-4 text-brand-600" />}
-                />
-              </div>
-
-              {/* Quick Pick Buttons */}
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    setDueDate(today);
-                  }}
-                  className={`px-2.5 py-1.5 text-[10px] font-bold rounded-lg border transition-colors ${
-                    dueDate === new Date().toISOString().split('T')[0]
-                      ? 'bg-brand-600 text-white border-brand-600'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const tomorrow = new Date();
-                    tomorrow.setDate(tomorrow.getDate() + 1);
-                    setDueDate(tomorrow.toISOString().split('T')[0]);
-                  }}
-                  className="px-2.5 py-1.5 text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors"
-                >
-                  Tomorrow
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextWeek = new Date();
-                    nextWeek.setDate(nextWeek.getDate() + 7);
-                    setDueDate(nextWeek.toISOString().split('T')[0]);
-                  }}
-                  className="px-2.5 py-1.5 text-[10px] font-bold bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-lg border border-brand-200 transition-colors"
-                >
-                  +1 Week
-                </button>
-              </div>
+          {/* Quick Due Date Presets Bar */}
+          <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+            <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1 shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-brand-600" />
+              Quick Due Date:
+            </span>
+            <div className="flex items-center gap-1.5 flex-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setDueDate(new Date().toISOString().split('T')[0])}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-colors ${
+                  dueDate === new Date().toISOString().split('T')[0]
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  setDueDate(tomorrow.toISOString().split('T')[0]);
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextWeek = new Date();
+                  nextWeek.setDate(nextWeek.getDate() + 7);
+                  setDueDate(nextWeek.toISOString().split('T')[0]);
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                +1 Week
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextMonth = new Date();
+                  nextMonth.setDate(nextMonth.getDate() + 30);
+                  setDueDate(nextMonth.toISOString().split('T')[0]);
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                +1 Month
+              </button>
             </div>
           </div>
 

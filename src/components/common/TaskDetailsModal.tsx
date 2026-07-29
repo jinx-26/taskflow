@@ -48,6 +48,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   const { user, profile, userRole } = useAuth();
   const [currentStatus, setCurrentStatus] = useState(task?.status || 'Todo');
   const [currentPriority, setCurrentPriority] = useState(task?.priority || 'Medium');
+  const [currentDueDate, setCurrentDueDate] = useState(task?.dueDate || '');
   const [description, setDescription] = useState(task?.description || '');
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<any[]>(task?.comments || []);
@@ -56,6 +57,20 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   const [subtasks, setSubtasks] = useState(task?.subtasks || []);
   const [activityLog, setActivityLog] = useState(task?.activityLog || []);
   const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'comments'>('details');
+
+  const handleDueDateChange = async (newDate: string) => {
+    setCurrentDueDate(newDate);
+    setSuccessMsg(`Due date updated to ${newDate}.`);
+    setTimeout(() => setSuccessMsg(''), 3000);
+
+    if (isSupabaseConfigured) {
+      await supabase.from('tasks').update({ due_date: newDate }).eq('id', task.id);
+    }
+
+    const updated = { ...task, dueDate: newDate };
+    if (onTaskUpdated) onTaskUpdated(updated);
+    window.dispatchEvent(new CustomEvent('taskflow:task-created', { detail: updated }));
+  };
 
   // Co-assignee modal state
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -200,6 +215,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     if (task) {
       setCurrentStatus(task.status);
       setCurrentPriority(task.priority);
+      setCurrentDueDate(task.dueDate || '');
       setDescription(task.description || '');
       setCoAssignees(task.coAssignees || []);
       setPendingInvitations(task.pendingInvitations || []);
@@ -439,7 +455,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           </div>
         )}
 
-        {/* Status Bar */}
+        {/* Status & Due Date Control Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-700">Status:</span>
@@ -453,6 +469,16 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
               <option value="In Review">In Review</option>
               <option value="Done">Done</option>
             </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700">Due Date:</span>
+            <input
+              type="date"
+              value={currentDueDate}
+              onChange={(e) => handleDueDateChange(e.target.value)}
+              className="rounded-lg border border-slate-300 p-1 text-xs font-bold text-brand-900 bg-white focus:ring-2 focus:ring-brand-500"
+            />
           </div>
 
           <div className="flex items-center gap-2">
