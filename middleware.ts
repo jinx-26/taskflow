@@ -1,29 +1,9 @@
 /**
  * Vercel Edge Middleware — Rate Limiting & Bot Protection
  *
- * Runs at the Vercel Edge (globally, before any request reaches the app)
- * with ~0ms added latency. Uses the Edge Runtime (V8 isolate — no Node.js).
- *
- * Protections applied to auth-related paths:
- *   1. IP-based sliding-window rate limiting
- *      • /login / /api/auth paths  → max 15 requests / 60 s per IP
- *      • /forgot-password          → max 5 requests  / 5 min per IP
- *   2. Oversized request body guard (> 10 KB → 413)
- *   3. Missing / obviously-bot User-Agent → 403
- *   4. Known bad-bot User-Agent pattern block list
- *
- * Note on state persistence:
- *   Rate-limit counters live in an in-memory Map scoped to this Edge isolate.
- *   Vercel spins up multiple isolate instances globally, so the counter is
- *   per-instance, not globally shared. For a globally-shared rate limit you
- *   would need Vercel KV or Upstash Redis. Per-instance limiting is still
- *   highly effective against typical bot storms because:
- *     • Each Vercel edge PoP handles a geographic cluster of requests.
- *     • A single attacker IP will always hit the same PoP (anycast routing).
+ * Built with standard Web APIs (Request / Response) — zero external framework
+ * dependencies (compatible with Vite/React apps on Vercel Edge Runtime).
  */
-
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 
 export const config = {
   // Only run middleware on these paths — keeps overhead minimal everywhere else.
@@ -41,21 +21,18 @@ const RULES: Record<string, RateLimitRule> = {
   '/login':            { windowMs: 60_000, maxRequests: 15 },
   '/forgot-password':  { windowMs: 300_000, maxRequests: 5 },
   '/reset-password':   { windowMs: 300_000, maxRequests: 5 },
-  '/api':              { windowMs: 60_000, maxRequests: 30 }, // API catch-all
+  '/api':              { windowMs: 60_000, maxRequests: 30 },
 };
 
 // ─── In-memory store ─────────────────────────────────────────────────────────
 
 interface WindowEntry {
   count: number;
-  resetAt: number; // Unix ms
+  resetAt: number;
 }
 
-// key = `${ip}::${pathname}`
 const store = new Map<string, WindowEntry>();
 
-// Periodically prune expired entries to prevent unbounded memory growth.
-// Edge isolates are short-lived but may handle many requests before recycling.
 function pruneStore() {
   const now = Date.now();
   for (const [key, entry] of store) {
@@ -64,7 +41,7 @@ function pruneStore() {
 }
 
 let lastPrune = Date.now();
-const PRUNE_INTERVAL_MS = 120_000; // every 2 minutes
+const PRUNE_INTERVAL_MS = 120_000;
 
 // ─── Bot / UA block list ─────────────────────────────────────────────────────
 
@@ -82,37 +59,35 @@ const BAD_BOT_PATTERNS = [
 ];
 
 function isBotUA(ua: string | null): boolean {
-  if (!ua || ua.trim().length === 0) return true; // No UA at all → bot
+  if (!ua || ua.trim().length === 0) return true;
   return BAD_BOT_PATTERNS.some((re) => re.test(ua));
 }
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
+// ─── Middleware Entrypoint ───────────────────────────────────────────────────
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export default function middleware(request: Request): Response {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
 
   // ── 1. Bot / UA check ────────────────────────────────────────────────────
   const ua = request.headers.get('user-agent');
   if (isBotUA(ua)) {
-    return new NextResponse('Forbidden', {
+    return new Response('Forbidden', {
       status: 403,
       headers: { 'Content-Type': 'text/plain' },
     });
   }
 
   // ── 2. Oversized body guard ──────────────────────────────────────────────
-  // Content-Length header is not always present, but when it is we can reject
-  // massive payloads immediately without reading the body.
   const contentLength = request.headers.get('content-length');
   if (contentLength && parseInt(contentLength, 10) > 10_240) {
-    return new NextResponse('Payload Too Large', {
+    return new Response('Payload Too Large', {
       status: 413,
       headers: { 'Content-Type': 'text/plain' },
     });
   }
 
   // ── 3. Rate limiting ─────────────────────────────────────────────────────
-  // Find matching rule (longest prefix match).
   const ruleKey = Object.keys(RULES).find((prefix) =>
     pathname === prefix || pathname.startsWith(prefix + '/')
   );
@@ -120,7 +95,6 @@ export function middleware(request: NextRequest) {
   if (ruleKey) {
     const rule = RULES[ruleKey];
 
-    // Best-effort IP extraction from Vercel-injected headers.
     const ip =
       request.headers.get('x-real-ip') ??
       request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
@@ -129,7 +103,6 @@ export function middleware(request: NextRequest) {
     const key = `${ip}::${ruleKey}`;
     const now = Date.now();
 
-    // Prune old entries occasionally.
     if (now - lastPrune > PRUNE_INTERVAL_MS) {
       pruneStore();
       lastPrune = now;
@@ -138,13 +111,12 @@ export function middleware(request: NextRequest) {
     const entry = store.get(key);
 
     if (!entry || entry.resetAt < now) {
-      // New window.
       store.set(key, { count: 1, resetAt: now + rule.windowMs });
     } else {
       entry.count += 1;
       if (entry.count > rule.maxRequests) {
         const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-        return new NextResponse('Too Many Requests', {
+        return new Response('Too Many Requests', {
           status: 429,
           headers: {
             'Content-Type': 'text/plain',
@@ -159,5 +131,9 @@ export function middleware(request: NextRequest) {
   }
 
   // ── Pass through ─────────────────────────────────────────────────────────
-  return NextResponse.next();
+  return new Response(null, {
+    headers: {
+      'x-middleware-next': '1',
+    },
+  });
 }
