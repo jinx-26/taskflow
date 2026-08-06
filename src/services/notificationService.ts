@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 export interface NotificationItem {
   id: string;
@@ -13,7 +13,9 @@ export interface NotificationItem {
   time: string;
 }
 
+// localStorage is only used as a dev/offline fallback — capped at this many items.
 const LOCAL_STORAGE_KEY = 'taskflow_live_notifications';
+const MAX_LOCAL_NOTIFS = 30;
 
 const DEFAULT_WELCOME_NOTIF: NotificationItem = {
   id: 'notif-welcome-001',
@@ -28,63 +30,59 @@ const DEFAULT_WELCOME_NOTIF: NotificationItem = {
   time: 'Just now',
 };
 
+function mapNotification(n: Record<string, unknown>): NotificationItem {
+  return {
+    id: n.id as string,
+    recipientEmail: n.recipient_email as string,
+    senderName: (n.sender_name as string) || 'System',
+    senderAvatar: n.sender_avatar as string | undefined,
+    title: n.title as string,
+    message: n.message as string,
+    taskCode: n.task_code as string | undefined,
+    type: (n.type as NotificationItem['type']) || 'assignment',
+    isRead: (n.is_read as boolean) || false,
+    time: n.created_at
+      ? new Date(n.created_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'Recently',
+  };
+}
+
+/**
+ * Fetch notifications for the current user.
+ * Filter is applied SERVER-SIDE via the DB query so only the user's own rows
+ * are transmitted — never all rows + client-side filter.
+ */
 export async function fetchLiveNotifications(userEmail: string): Promise<NotificationItem[]> {
   const cleanEmail = (userEmail || '').toLowerCase().trim();
-  const emailPrefix = cleanEmail.split('@')[0];
 
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false });
+  try {
+    // Only fetch explicit-to-me + broadcast notifications.
+    // RLS on the notifications table enforces this at the database level too.
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, title, message, type, is_read, created_at, sender_name, sender_avatar, task_code, recipient_email')
+      .or(`recipient_email.eq.${cleanEmail},recipient_email.eq.all`)
+      .order('created_at', { ascending: false })
+      .limit(50); // prevent unbounded fetches
 
-      if (!error && data && data.length > 0) {
-        const userNotifs = data.filter((n: any) => {
-          const rec = (n.recipient_email || '').toLowerCase();
-          return (
-            rec === 'all' ||
-            rec === cleanEmail ||
-            (emailPrefix && rec.includes(emailPrefix.substring(0, 5)))
-          );
-        });
-
-        if (userNotifs.length > 0) {
-          return userNotifs.map((n: any) => ({
-            id: n.id,
-            recipientEmail: n.recipient_email,
-            senderName: n.sender_name || 'System',
-            senderAvatar: n.sender_avatar,
-            title: n.title,
-            message: n.message,
-            taskCode: n.task_code,
-            type: n.type || 'assignment',
-            isRead: n.is_read || false,
-            time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
-          }));
-        }
-      }
-    } catch (err) {
-      console.warn('Supabase fetch notifications warning:', err);
+    if (!error && data && data.length > 0) {
+      return data.map(mapNotification);
     }
+  } catch (err) {
+    console.warn('Supabase fetch notifications warning:', err);
   }
 
-  // Fallback local storage
+  // Offline / dev fallback — local storage only, capped
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (stored) {
     try {
       const parsed: NotificationItem[] = JSON.parse(stored);
       const filtered = parsed.filter((n) => {
         const rec = (n.recipientEmail || '').toLowerCase();
-        return (
-          rec === 'all' ||
-          rec === cleanEmail ||
-          (emailPrefix && rec.includes(emailPrefix.substring(0, 5)))
-        );
+        return rec === 'all' || rec === cleanEmail;
       });
-
       if (filtered.length > 0) return filtered;
-    } catch (e) {}
+    } catch { /* ignore corrupt data */ }
   }
 
   return [DEFAULT_WELCOME_NOTIF];
@@ -97,77 +95,69 @@ export async function sendNotification(notif: {
   title: string;
   message: string;
   taskCode?: string;
-  type: 'assignment' | 'completion' | 'comment' | 'announcement' | 'collab_request' | 'collab_response' | 'approval_request';
+  type: NotificationItem['type'];
 }): Promise<boolean> {
-  const newNotifObj: NotificationItem = {
-    id: `notif-${Date.now()}`,
-    recipientEmail: notif.recipientEmail.toLowerCase(),
-    senderName: notif.senderName,
-    senderAvatar: notif.senderAvatar,
-    title: notif.title,
-    message: notif.message,
-    taskCode: notif.taskCode,
-    type: notif.type,
-    isRead: false,
-    time: 'Just now',
-  };
+  try {
+    await supabase.from('notifications').insert([
+      {
+        recipient_email: notif.recipientEmail.toLowerCase(),
+        sender_name: notif.senderName,
+        sender_avatar: notif.senderAvatar || '',
+        title: notif.title,
+        message: notif.message,
+        task_code: notif.taskCode || '',
+        type: notif.type,
+        is_read: false,
+      },
+    ]);
+    return true;
+  } catch (err) {
+    console.warn('Supabase send notification error:', err);
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('notifications').insert([
-        {
-          recipient_email: notif.recipientEmail.toLowerCase(),
-          sender_name: notif.senderName,
-          sender_avatar: notif.senderAvatar || '',
-          title: notif.title,
-          message: notif.message,
-          task_code: notif.taskCode || '',
-          type: notif.type,
-          is_read: false,
-        },
-      ]);
-    } catch (err) {
-      console.warn('Supabase send notification notice:', err);
-    }
+    // Dev/offline fallback — persist locally with a cap so storage doesn't grow unbounded
+    const newNotifObj: NotificationItem = {
+      id: `notif-${Date.now()}`,
+      recipientEmail: notif.recipientEmail.toLowerCase(),
+      senderName: notif.senderName,
+      senderAvatar: notif.senderAvatar,
+      title: notif.title,
+      message: notif.message,
+      taskCode: notif.taskCode,
+      type: notif.type,
+      isRead: false,
+      time: 'Just now',
+    };
+
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    let list: NotificationItem[] = [];
+    try { list = stored ? JSON.parse(stored) : []; } catch { list = []; }
+    list.unshift(newNotifObj);
+    // Keep only the most recent N notifications to prevent unbounded growth
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list.slice(0, MAX_LOCAL_NOTIFS)));
+
+    return false;
   }
-
-  // Local fallback persistence
-  const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-  let list: NotificationItem[] = [];
-  if (stored) {
-    try {
-      list = JSON.parse(stored);
-    } catch (e) {
-      list = [];
-    }
-  }
-  list.unshift(newNotifObj);
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-
-  return true;
 }
 
 export async function markAllAsRead(userEmail: string): Promise<boolean> {
   const cleanEmail = (userEmail || '').toLowerCase().trim();
 
-  if (isSupabaseConfigured) {
-    try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .or(`recipient_email.eq.${cleanEmail},recipient_email.eq.all`);
-    } catch (err) {
-      console.warn('Supabase mark all read warning:', err);
-    }
+  try {
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .or(`recipient_email.eq.${cleanEmail},recipient_email.eq.all`);
+  } catch (err) {
+    console.warn('Supabase mark all read warning:', err);
   }
 
+  // Sync local fallback too
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (stored) {
     try {
       const list: NotificationItem[] = JSON.parse(stored);
-      const updated = list.map((n) => ({ ...n, isRead: true }));
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {}
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list.map((n) => ({ ...n, isRead: true }))));
+    } catch { /* ignore */ }
   }
 
   return true;

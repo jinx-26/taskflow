@@ -10,7 +10,7 @@ export const fetchAnnouncements = async (): Promise<Announcement[]> => {
   try {
     const { data, error } = await supabase
       .from('announcements')
-      .select('*')
+      .select('id, title, content, author_id, author_name, author_avatar, attachment_url, attachment_name, created_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -83,7 +83,7 @@ export const fetchChannelMessages = async (channelId: string): Promise<ChatMessa
   try {
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select('id, channel_id, sender_id, sender_name, sender_avatar, content, attachment_url, attachment_name, attachment_type, created_at')
       .eq('channel_id', channelId)
       .order('created_at', { ascending: true });
 

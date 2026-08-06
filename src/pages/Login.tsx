@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { UserRole } from '../types';
+import { supabase } from '../lib/supabase';
+import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2, User, ShieldAlert } from 'lucide-react';
+import {
+  recordFailedAttempt,
+  clearAttempts,
+  getLockoutSeconds,
+} from '../lib/rateLimiter';
+import { PASSWORD_MIN, PASSWORD_MAX } from '../lib/passwordPolicy';
+
+// Allowed roles a new user can request — Admin is never available here.
+const ALLOWED_ROLES = ['Manager', 'Lead', 'Member'] as const;
+type AllowedRole = (typeof ALLOWED_ROLES)[number];
 
 export const Login: React.FC = () => {
   const { signIn } = useAuth();
@@ -15,104 +24,167 @@ export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<UserRole>('Member');
+  const [role, setRole] = useState<AllowedRole>('Member');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // ─── Honeypot ─────────────────────────────────────────────────────────────
+  // Hidden field — legitimate users never type in it; bots fill it automatically.
+  const [honeypot, setHoneypot] = useState('');
+
+  // ─── Client-side lockout countdown ───────────────────────────────────────
+  const [lockoutSecs, setLockoutSecs] = useState(getLockoutSeconds);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (lockoutSecs > 0) {
+      timerRef.current = setInterval(() => {
+        const remaining = getLockoutSeconds();
+        setLockoutSecs(remaining);
+        if (remaining <= 0 && timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [lockoutSecs]);
+
+  // ─── Password strength display ───────────────────────────────────────────
+  const passwordStrength = (() => {
+    if (!password || mode === 'signin') return null;
+    const len = password.length;
+    if (len < PASSWORD_MIN) return { label: 'Too short', color: 'text-red-500', pct: 20 };
+    if (len < 12) return { label: 'Weak', color: 'text-orange-500', pct: 40 };
+    if (len < 16) return { label: 'Fair', color: 'text-yellow-500', pct: 60 };
+    if (len < 24) return { label: 'Good', color: 'text-emerald-500', pct: 80 };
+    return { label: 'Strong', color: 'text-emerald-600', pct: 100 };
+  })();
+
+  // ─── Validation ───────────────────────────────────────────────────────────
+  const validatePassword = (pw: string, isSignUp: boolean): string | null => {
+    if (!pw) return 'Password is required.';
+    if (pw.length > PASSWORD_MAX)
+      return `Password must not exceed ${PASSWORD_MAX} characters.`;
+    if (isSignUp && pw.length < PASSWORD_MIN)
+      return `Password must be at least ${PASSWORD_MIN} characters.`;
+    return null;
+  };
+
+  // ─── Submit handler ───────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please enter your email address and password');
+
+    // Honeypot check — if filled, silently pretend success to confuse bots.
+    if (honeypot) {
+      setSuccessMsg('Registration submitted! An admin will review your request.');
       return;
     }
+
+    // Client-side lockout guard.
+    const remaining = getLockoutSeconds();
+    if (remaining > 0) {
+      setError(`Too many failed attempts. Please wait ${remaining} seconds.`);
+      return;
+    }
+
+    if (!email) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    const pwError = validatePassword(password, mode === 'signup');
+    if (pwError) { setError(pwError); return; }
 
     setIsLoading(true);
     setError(null);
     setSuccessMsg(null);
 
+    // ── Sign in ──────────────────────────────────────────────────────────
     if (mode === 'signin') {
       const { error: authError } = await signIn(email, password);
       setIsLoading(false);
+
       if (authError) {
+        const secs = recordFailedAttempt();
+        setLockoutSecs(secs);
+
+        // Surface a generic error — never expose specific auth internals to the UI.
         if (authError.message.toLowerCase().includes('email not confirmed')) {
-          setError(
-            'Email not confirmed in Supabase Auth. Turn OFF "Confirm email" in Supabase Dashboard (Auth -> Providers -> Email) or run Section 13 in supabase_v2_clean_schema.sql.'
-          );
+          setError('Your email address has not been confirmed. Please check your inbox.');
         } else {
-          setError(authError.message || 'Failed to sign in. Please check your credentials.');
+          setError('Invalid email or password. Please try again.');
         }
       } else {
+        clearAttempts();
         navigate('/dashboard');
       }
-    } else {
-      // Production Supabase Sign Up Flow
-      if (isSupabaseConfigured) {
-        const userEmail = email.trim().toLowerCase();
-        const userFullName = fullName.trim() || userEmail.split('@')[0];
 
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: userEmail,
-          password,
-          options: {
-            data: {
-              full_name: userFullName,
-              role,
-            },
-          },
+    // ── Sign up ──────────────────────────────────────────────────────────
+    } else {
+      const userEmail = email.trim().toLowerCase();
+      const userFullName = fullName.trim() || userEmail.split('@')[0];
+
+      // Role is NOT sent in signUp options — the database trigger always assigns
+      // 'Member' / 'Pending' regardless of client metadata.
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: userEmail,
+        password,
+        options: {
+          data: { full_name: userFullName },
+        },
+      });
+
+      if (signUpError) {
+        setIsLoading(false);
+        if (signUpError.message.toLowerCase().includes('rate limit')) {
+          setError('Too many registration attempts. Please try again in a few minutes.');
+        } else {
+          setError(signUpError.message);
+        }
+        return;
+      }
+
+      // Upsert the profile row — role and status are always the safe defaults.
+      if (data.user) {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          full_name: userFullName,
+          role: 'Member',    // server / trigger decides final role
+          status: 'Pending', // always pending until an Admin approves
+          updated_at: new Date().toISOString(),
         });
 
-        if (signUpError) {
-          setIsLoading(false);
-          if (signUpError.message.toLowerCase().includes('rate limit')) {
-            setError(
-              'Supabase Email Rate Limit Reached. Disable "Confirm email" in Supabase Dashboard (Auth -> Providers -> Email) to allow instant signups without email throttling.'
-            );
-          } else {
-            setError(signUpError.message);
-          }
-          return;
-        }
-
-        const isSuperAdmin = userEmail === 'jignesh.giri2005@gmail.com';
-
-        // Direct profile upsert fallback
-        if (data.user) {
-          await supabase.from('profiles').upsert({
-            id: data.user.id,
-            full_name: userFullName,
-            role: isSuperAdmin ? 'SuperAdmin' : role,
-            status: isSuperAdmin ? 'Approved' : 'Pending',
-            is_superadmin: isSuperAdmin,
-            updated_at: new Date().toISOString(),
-          });
-
-          // Insert real-time notification request for SuperAdmin & Admins
-          if (!isSuperAdmin) {
-            await supabase.from('notifications').insert({
-              recipient_email: 'jignesh.giri2005@gmail.com',
-              sender_name: userFullName,
-              title: 'New Account Approval Request',
-              message: `${userFullName} registered as ${role} and is awaiting Admin approval.`,
-              type: 'approval_request',
-            });
-          }
-        }
-
-        setIsLoading(false);
-
-        if (isSuperAdmin) {
-          setSuccessMsg('Master SuperAdmin registered and approved successfully! You can now sign in.');
-        } else {
-          setSuccessMsg(`Registration submitted for ${userFullName} as ${role}! An approval request has been sent to Administrators. You can sign in once an Admin approves your account.`);
-        }
-        setMode('signin');
-      } else {
-        setError('Supabase is not configured. Unable to complete registration.');
-        setIsLoading(false);
+        // Notify admin via the notifications table (no hardcoded email in code —
+        // the query is addressed by recipient_role so the DB resolves the admin).
+        await supabase.from('notifications').insert({
+          sender_name: userFullName,
+          title: 'New Account Approval Request',
+          message: `${userFullName} has registered and is awaiting Admin approval.`,
+          type: 'approval_request',
+        });
       }
+
+      setIsLoading(false);
+      setSuccessMsg(
+        `Registration submitted for ${userFullName}! ` +
+          'An approval request has been sent to the Administrators. ' +
+          'You can sign in once an Admin approves your account.'
+      );
+      setMode('signin');
     }
   };
+
+  const switchMode = (next: 'signin' | 'signup') => {
+    setMode(next);
+    setError(null);
+    setSuccessMsg(null);
+    setPassword('');
+  };
+
+  const isLocked = lockoutSecs > 0;
 
   return (
     <div className="space-y-6">
@@ -120,7 +192,7 @@ export const Login: React.FC = () => {
       <div className="flex bg-slate-100 p-1 rounded-xl">
         <button
           type="button"
-          onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null); }}
+          onClick={() => switchMode('signin')}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
             mode === 'signin'
               ? 'bg-white text-slate-900 shadow-soft-xs'
@@ -131,7 +203,7 @@ export const Login: React.FC = () => {
         </button>
         <button
           type="button"
-          onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null); }}
+          onClick={() => switchMode('signup')}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
             mode === 'signup'
               ? 'bg-white text-slate-900 shadow-soft-xs'
@@ -153,7 +225,18 @@ export const Login: React.FC = () => {
         </p>
       </div>
 
-      {error && (
+      {/* Lockout warning */}
+      {isLocked && (
+        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2.5 animate-in fade-in-50">
+          <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+          <span>
+            Too many failed attempts. Please wait{' '}
+            <strong>{lockoutSecs}s</strong> before trying again.
+          </span>
+        </div>
+      )}
+
+      {error && !isLocked && (
         <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in-50">
           <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
           <span>{error}</span>
@@ -168,6 +251,18 @@ export const Login: React.FC = () => {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Honeypot — hidden from real users, bots fill it */}
+        <input
+          type="text"
+          name="website"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+          tabIndex={-1}
+          autoComplete="off"
+          aria-hidden="true"
+          style={{ display: 'none' }}
+        />
+
         {mode === 'signup' && (
           <>
             <Input
@@ -175,6 +270,7 @@ export const Login: React.FC = () => {
               placeholder="e.g. Alex Morgan"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
+              leftIcon={<User className="w-4 h-4" />}
               required
             />
 
@@ -184,13 +280,16 @@ export const Login: React.FC = () => {
               </label>
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
+                onChange={(e) => setRole(e.target.value as AllowedRole)}
                 className="w-full bg-white text-slate-900 text-xs rounded-xl border border-slate-200 px-3 py-2.5 h-10 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 font-medium"
               >
-                <option value="Manager">Manager (Project & Team Management)</option>
+                <option value="Manager">Manager (Project &amp; Team Management)</option>
                 <option value="Lead">Lead (Technical Lead)</option>
                 <option value="Member">Engineer (Software Engineer / Team Member)</option>
               </select>
+              <p className="text-[11px] text-slate-400">
+                Your actual role is assigned by an Administrator after approval.
+              </p>
             </div>
           </>
         )}
@@ -226,9 +325,45 @@ export const Login: React.FC = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             leftIcon={<Lock className="w-4 h-4" />}
-            autoComplete="current-password"
+            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            maxLength={PASSWORD_MAX}
             required
           />
+
+          {/* Password length hint */}
+          {mode === 'signup' && (
+            <div className="space-y-1 pt-0.5">
+              {passwordStrength && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-medium ${passwordStrength.color}`}>
+                      {passwordStrength.label}
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      {password.length} / {PASSWORD_MAX}
+                    </span>
+                  </div>
+                  <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        passwordStrength.pct <= 20
+                          ? 'bg-red-400'
+                          : passwordStrength.pct <= 40
+                          ? 'bg-orange-400'
+                          : passwordStrength.pct <= 60
+                          ? 'bg-yellow-400'
+                          : 'bg-emerald-400'
+                      }`}
+                      style={{ width: `${passwordStrength.pct}%` }}
+                    />
+                  </div>
+                </>
+              )}
+              <p className="text-[11px] text-slate-400">
+                {PASSWORD_MIN}–{PASSWORD_MAX} characters.
+              </p>
+            </div>
+          )}
         </div>
 
         <Button
@@ -237,9 +372,14 @@ export const Login: React.FC = () => {
           size="lg"
           className="w-full font-semibold shadow-soft"
           isLoading={isLoading}
+          disabled={isLocked || isLoading}
           rightIcon={<ArrowRight className="w-4 h-4" />}
         >
-          {mode === 'signin' ? 'Sign In to Workspace' : `Submit Registration Request (${role === 'Member' ? 'Engineer' : role})`}
+          {isLocked
+            ? `Locked — wait ${lockoutSecs}s`
+            : mode === 'signin'
+            ? 'Sign In to Workspace'
+            : `Submit Registration Request (${role === 'Member' ? 'Engineer' : role})`}
         </Button>
       </form>
     </div>

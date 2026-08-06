@@ -22,7 +22,18 @@ import {
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { userRole } = useAuth();
+
+  // Defense-in-depth: verify role inside the component, not only in the router.
+  // This prevents privilege leakage if routing is ever accidentally changed.
+  if (userRole !== 'Admin') {
+    return (
+      <div className="p-12 text-center text-slate-400 text-sm">
+        <Shield className="w-8 h-8 mx-auto mb-3 text-slate-300" />
+        You do not have permission to view this page.
+      </div>
+    );
+  }
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +48,7 @@ export const AdminPanel: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, full_name, avatar_url, role, status, department_id, team_id, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

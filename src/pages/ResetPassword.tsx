@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Lock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { PASSWORD_MIN, PASSWORD_MAX } from '../lib/passwordPolicy';
 
 export const ResetPassword: React.FC = () => {
   const { updatePassword } = useAuth();
@@ -18,15 +19,19 @@ export const ResetPassword: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!password) {
-      setError('Please enter a new password');
+      setError('Please enter a new password.');
       return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (password.length > PASSWORD_MAX) {
+      setError(`Password must not exceed ${PASSWORD_MAX} characters.`);
+      return;
+    }
+    if (password.length < PASSWORD_MIN) {
+      setError(`Password must be at least ${PASSWORD_MIN} characters.`);
       return;
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwords do not match.');
       return;
     }
 
@@ -79,10 +84,12 @@ export const ResetPassword: React.FC = () => {
           <Input
             label="New Password"
             type="password"
-            placeholder="••••••••••••"
+            placeholder={`${PASSWORD_MIN}–${PASSWORD_MAX} characters`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             leftIcon={<Lock className="w-4 h-4" />}
+            maxLength={PASSWORD_MAX}
+            autoComplete="new-password"
             required
           />
 

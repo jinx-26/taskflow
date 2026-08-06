@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { TaskPlaceholder, UserProfile, CollaborationRequest } from '../types';
+import { TaskPlaceholder, TaskComment, UserProfile, CollaborationRequest } from '../types';
 import { sendNotification } from './notificationService';
 
 export function formatDisplayDate(dateStr?: string): string {
@@ -40,7 +40,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select('*')
+        .select('id, code, title, description, issue_type, project, project_id, priority, status, assignee_id, assignee_name, assignee_avatar, co_assignees, pending_invitations, subtasks, activity_log, comments, due_date, created_by, created_at, is_deleted, estimated_hours, logged_hours, attachment_url, attachment_name')
         .neq('is_deleted', true)
         .order('created_at', { ascending: false });
 
@@ -114,7 +114,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
     } catch (err) {
       console.error('fetchLiveTasks error:', err);
     }
-  }
+  } // end if (isSupabaseConfigured)
 
   // Merge DB tasks with local session cache, avoiding duplicates by code/id
   const combined = [...dbTasks];
@@ -129,9 +129,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
 
 
 // Audited Soft Deletion
-export async function softDeleteTask(taskId: string, userId?: string, userName?: string): Promise<boolean> {
-  if (!isSupabaseConfigured) return true;
-
+export async function softDeleteTask(taskId: string, userId?: string, _userName?: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('tasks')
@@ -156,8 +154,6 @@ export async function inviteCoAssignee(
   inviter: UserProfile,
   target: UserProfile
 ): Promise<boolean> {
-  if (!isSupabaseConfigured) return true;
-
   try {
     const newInvite: CollaborationRequest = {
       id: `inv-${Date.now()}`,
@@ -196,8 +192,9 @@ export async function inviteCoAssignee(
       .eq('id', task.id);
 
     // Send real-time notification to target user
+    // Use targetUserId as the routing key if a real email is unavailable
     await sendNotification({
-      recipientEmail: target.full_name, // Matches target profile full name / channel
+      recipientEmail: target.email ?? target.id, // real email, not display name
       senderName: inviter.full_name,
       senderAvatar: inviter.avatar_url,
       title: `Task Collaboration Request: ${task.code}`,
@@ -220,13 +217,11 @@ export async function respondToInvite(
   userProfile: UserProfile,
   accept: boolean
 ): Promise<boolean> {
-  if (!isSupabaseConfigured) return true;
-
   try {
     // 1. Fetch target task
     const { data: taskData, error: taskErr } = await supabase
       .from('tasks')
-      .select('*')
+      .select('id, code, co_assignees, pending_invitations, activity_log')
       .eq('id', taskId)
       .single();
 
@@ -282,7 +277,7 @@ export async function respondToInvite(
     // Send confirmation notification to original inviter if invite existed
     if (targetInvite) {
       await sendNotification({
-        recipientEmail: targetInvite.invitedByName,
+        recipientEmail: targetInvite.invitedByName, // NOTE: store real email in CollaborationRequest.invitedByEmail
         senderName: userProfile.full_name,
         senderAvatar: userProfile.avatar_url,
         title: accept ? `Collaboration Invite Accepted` : `Collaboration Invite Declined`,

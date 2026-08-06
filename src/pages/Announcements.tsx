@@ -41,6 +41,7 @@ export const Announcements: React.FC = () => {
   const [annTitle, setAnnTitle] = useState('');
   const [annContent, setAnnContent] = useState('');
   const [annFile, setAnnFile] = useState<File | null>(null);
+  const [annFileError, setAnnFileError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -92,6 +93,34 @@ export const Announcements: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Allowed document types for announcement attachments
+  const ALLOWED_DOC_TYPES = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+    'application/msword',
+    'application/vnd.ms-excel',
+    'image/jpeg', 'image/png', 'image/webp',
+  ];
+  const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10 MB
+
+  const handleAnnFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setAnnFileError(null);
+    if (!file) { setAnnFile(null); return; }
+    if (!ALLOWED_DOC_TYPES.includes(file.type)) {
+      setAnnFileError('Only PDF, Word, Excel, or image files are allowed.');
+      setAnnFile(null);
+      return;
+    }
+    if (file.size > MAX_DOC_BYTES) {
+      setAnnFileError('File must be smaller than 10 MB.');
+      setAnnFile(null);
+      return;
+    }
+    setAnnFile(file);
+  };
+
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!annTitle.trim() || !annContent.trim() || !user) return;
@@ -100,29 +129,39 @@ export const Announcements: React.FC = () => {
     let attachmentUrl = '';
     let attachmentName = '';
 
-    if (annFile && isSupabaseConfigured) {
+    if (annFile) {
       try {
-        const fileExt = annFile.name.split('.').pop();
-        const filePath = `announcements/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { data, error } = await supabase.storage.from('task-attachments').upload(filePath, annFile);
+        // Use a random path — never expose the original filename as the storage path
+        const safeId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const filePath = `announcements/${user.id}/${safeId}`;
+        const { data, error } = await supabase.storage
+          .from('task-attachments')
+          .upload(filePath, annFile, { contentType: annFile.type });
+
         if (!error && data) {
-          const { data: publicUrlData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
-          attachmentUrl = publicUrlData.publicUrl;
-          attachmentName = annFile.name;
+          // Bucket is private — serve via signed URL
+          const { data: signedData } = await supabase.storage
+            .from('task-attachments')
+            .createSignedUrl(filePath, 60 * 60 * 24 * 30); // 30-day expiry for announcements
+
+          if (signedData) {
+            attachmentUrl = signedData.signedUrl;
+            attachmentName = annFile.name; // display name only, not storage path
+          }
         }
       } catch (err) {
-        console.warn('File storage fallback:', err);
+        console.warn('Announcement file upload error:', err);
       }
     }
 
     const created = await createAnnouncement(
-      annTitle,
-      annContent,
+      annTitle.trim(),
+      annContent.trim(),
       user.id,
       profile?.full_name || user.email || 'Manager',
       profile?.avatar_url,
-      attachmentUrl || (annFile ? '#' : undefined),
-      attachmentName || annFile?.name
+      attachmentUrl || undefined,
+      attachmentName || undefined
     );
 
     if (created) {
@@ -132,6 +171,7 @@ export const Announcements: React.FC = () => {
     setAnnTitle('');
     setAnnContent('');
     setAnnFile(null);
+    setAnnFileError(null);
     setIsSubmitting(false);
     setShowCreateModal(false);
   };

@@ -5,11 +5,10 @@ import { ShieldAlert, Clock, Ban, LogOut, RefreshCw } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 
 export const ApprovalGate: React.FC = () => {
-  const { user, profile, userStatus, signOut, refreshProfile } = useAuth();
+  const { userRole, userStatus, signOut, refreshProfile } = useAuth();
 
-  const isAdmin = user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com' || profile?.role === 'Admin';
-
-  if (isAdmin || userStatus === 'Approved') {
+  // Role and status are sourced from the database profile record — no email literals.
+  if (userRole === 'Admin' || userStatus === 'Approved') {
     return <Outlet />;
   }
 
@@ -43,7 +42,7 @@ export const ApprovalGate: React.FC = () => {
 
           <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
             {userStatus === 'Pending' && (
-              <>Your registration as <strong className="text-amber-400 font-semibold">{profile?.role || 'Member'}</strong> has been submitted. An Administrator must approve your account before you can access the TaskFlow workspace.</>
+              <>Your registration as <strong className="text-amber-400 font-semibold">{userRole}</strong> has been submitted. An Administrator must approve your account before you can access the TaskFlow workspace.</>
             )}
             {userStatus === 'Rejected' && (
               <>Your access request to the TaskFlow workspace was not approved by workspace administrators. Please contact your administrator if you believe this is an error.</>

@@ -6,6 +6,7 @@ export type UserStatus = 'Pending' | 'Approved' | 'Rejected' | 'Suspended';
 export interface UserProfile {
   id: string;
   full_name: string;
+  email?: string;          // added for notification routing
   avatar_url?: string;
   role: UserRole;
   status: UserStatus;
@@ -195,6 +196,15 @@ export interface CollaborationRequest {
   createdAt: string;
 }
 
+export interface TaskComment {
+  id: string;
+  authorId: string;
+  authorName: string;     // max 100 chars enforced before write
+  authorAvatar?: string;
+  text: string;           // max 2000 chars enforced before write
+  createdAt: string;
+}
+
 export interface TaskPlaceholder {
   id: string;
   code: string;
@@ -210,7 +220,7 @@ export interface TaskPlaceholder {
   pendingInvitations?: CollaborationRequest[];
   subtasks?: SubtaskItem[];
   activityLog?: TaskActivityLog[];
-  comments?: any[];
+  comments?: TaskComment[];
   dueDate: string;
   createdAt?: string;
   createdBy?: string;

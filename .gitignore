@@ -11,10 +11,11 @@ dist
 dist-isolation
 .bundle
 
-# Local env files
+# Environment files — never commit real secrets
+# The .env.example file IS committed (it contains no real values)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -26,8 +27,3 @@ dist-isolation
 *.njsproj
 *.sln
 *.sw?
-
-# Database SQL schema files
-*.sql
-.env
-.env

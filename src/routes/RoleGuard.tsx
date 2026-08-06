@@ -7,12 +7,12 @@ interface RoleGuardProps {
   allowedRoles: UserRole[];
 }
 
+// Role is sourced exclusively from the database profile record via AuthContext.
+// No email-string comparisons — the database is the single source of truth.
 export const RoleGuard: React.FC<RoleGuardProps> = ({ allowedRoles }) => {
-  const { user, userRole } = useAuth();
+  const { userRole } = useAuth();
 
-  const isAdmin = userRole === 'Admin' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
-
-  if (isAdmin || allowedRoles.includes(userRole)) {
+  if (allowedRoles.includes(userRole)) {
     return <Outlet />;
   }
 
