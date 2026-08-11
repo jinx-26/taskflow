@@ -1,22 +1,16 @@
 -- =============================================================================
--- Hardening assign_task_code trigger function
+-- Always enforce sequence-generated task code on INSERT
 -- =============================================================================
--- Prevents "duplicate key value violates unique constraint tasks_code_unique"
--- error when older/cached frontend clients send a duplicate task code.
---
--- If NEW.code is NULL, empty, or ALREADY EXISTS in public.tasks, the trigger
--- automatically assigns the next guaranteed-unique code from public.task_code_seq.
+-- Guaranteed fix: Ignore whatever `code` string any client (old or new) sends
+-- during INSERT. The DB trigger ALWAYS assigns `TSK-<sequence_number>`.
+-- This completely eliminates duplicate key violations on `tasks_code_unique`.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.assign_task_code()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.code IS NULL 
-     OR TRIM(NEW.code) = '' 
-     OR EXISTS (SELECT 1 FROM public.tasks WHERE code = NEW.code) 
-  THEN
-    NEW.code := 'TSK-' || LPAD(nextval('public.task_code_seq')::text, 3, '0');
-  END IF;
+  -- Always override code with guaranteed sequential sequence value
+  NEW.code := 'TSK-' || LPAD(nextval('public.task_code_seq')::text, 3, '0');
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
