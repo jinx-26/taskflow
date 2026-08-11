@@ -126,15 +126,15 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     }
   };
 
-  // Handler for post-creation file uploads for review
   const handleUploadReviewFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const filesToUpload = Array.from(e.target.files).slice(0, 10);
     setIsUploadingReviewFile(true);
 
-    const newAttachments: Array<{ name: string; url: string }> = [];
+    let anySuccess = false;
 
     for (const file of filesToUpload) {
+      // ── Step 1: Upload file to Supabase Storage ──────────────────────────────
       let fileUrl = '';
       if (isSupabaseConfigured) {
         try {
@@ -154,59 +154,56 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
         }
       }
 
-      // Only save files that have a real persistent URL (not a blob: URL).
-      // Blob URLs are browser-session-only and break immediately on Vercel/production.
+      // Skip blob: URLs — they are session-only and useless in the DB
       if (!fileUrl || fileUrl.startsWith('blob:')) {
         console.warn(`Skipping file "${file.name}": could not upload to storage.`);
         setSuccessMsg(`Upload failed for "${file.name}". Check Supabase Storage permissions.`);
         continue;
       }
 
-      newAttachments.push({ name: file.name, url: fileUrl });
-    }
+      // ── Step 2: Persist to DB via SECURITY DEFINER RPC ───────────────────────
+      // Direct supabase.from('tasks').update() silently fails for co-assignees
+      // because the UPDATE RLS only allows creator or primary assignee to update.
+      // The RPC runs as superuser and validates participant status internally.
+      if (isSupabaseConfigured) {
+        const { data: rpcResult, error: rpcErr } = await supabase.rpc('add_task_attachment', {
+          p_task_id:   task.id,
+          p_file_name: file.name,
+          p_file_url:  fileUrl,
+        });
 
-    if (newAttachments.length === 0) {
-      setIsUploadingReviewFile(false);
-      return;
-    }
+        if (rpcErr || !rpcResult?.success) {
+          console.error('add_task_attachment RPC error:', rpcErr?.message || rpcResult?.error);
+          setSuccessMsg(`Could not save "${file.name}" to task. You may not have permission.`);
+          continue;
+        }
+      }
 
-    // Append new markdown attachment links to description
-    const newMarkdownLinks = newAttachments
-      .map((f) => `📎 Attachment: [${f.name}](${f.url})`)
-      .join('\n');
+      // ── Step 3: Update local component state so UI refreshes immediately ─────
+      const markdownLink = `\n\n📎 Attachment: [${file.name}](${fileUrl})`;
+      setDescription((prev) => (prev || '').trimEnd() + markdownLink);
 
-    const updatedDescription = description
-      ? `${description.trim()}\n\n${newMarkdownLinks}`
-      : newMarkdownLinks;
+      const newLog = {
+        id: `log-${Date.now()}-${Math.random()}`,
+        userName: profile?.full_name || 'Team Member',
+        userAvatar: profile?.avatar_url,
+        action: `uploaded file for review: "${file.name}".`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setActivityLog((prev) => [newLog, ...prev]);
 
-    setDescription(updatedDescription);
-
-    // Add activity log entries for uploaded files
-    const logEntries = newAttachments.map((f) => ({
-      id: `log-${Date.now()}-${Math.random()}`,
-      userName: profile?.full_name || 'Team Member',
-      userAvatar: profile?.avatar_url,
-      action: `uploaded file for review: "${f.name}".`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }));
-
-    const updatedLogs = [...logEntries, ...activityLog];
-    setActivityLog(updatedLogs);
-
-    if (isSupabaseConfigured) {
-      await supabase
-        .from('tasks')
-        .update({ description: updatedDescription, activity_log: updatedLogs })
-        .eq('id', task.id);
+      anySuccess = true;
     }
 
     setIsUploadingReviewFile(false);
-    setSuccessMsg(`Successfully uploaded ${newAttachments.length} file(s) for review!`);
-    setTimeout(() => setSuccessMsg(''), 4000);
 
-    const updatedTask = { ...task, description: updatedDescription, activityLog: updatedLogs };
-    if (onTaskUpdated) onTaskUpdated(updatedTask);
-    window.dispatchEvent(new CustomEvent('taskflow:task-created', { detail: updatedTask }));
+    if (anySuccess) {
+      setSuccessMsg('File(s) uploaded successfully! Visible to all task participants.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+
+      // Notify parent to re-fetch the task so other views show the attachment
+      window.dispatchEvent(new CustomEvent('taskflow:task-created'));
+    }
   };
 
   // Manager 2-Step Confirmation Task Delete Handler
