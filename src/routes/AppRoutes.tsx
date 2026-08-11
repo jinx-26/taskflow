@@ -4,6 +4,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 import { PublicRoute } from './PublicRoute';
 import { ApprovalGate } from './ApprovalGate';
 import { RoleGuard } from './RoleGuard';
+import { MfaGuard } from './MfaGuard';
 import { AppLayout } from '../layouts/AppLayout';
 import { AuthLayout } from '../layouts/AuthLayout';
 
@@ -40,18 +41,22 @@ export const AppRoutes: React.FC = () => {
       <Route element={<ProtectedRoute />}>
         <Route element={<ApprovalGate />}>
           <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/teams" element={<Teams />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/announcements" element={<Announcements />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />
 
-            {/* Admin Panel Route */}
-            <Route element={<RoleGuard allowedRoles={['Admin']} />}>
-              <Route path="/sys-admin-panel-k3m8" element={<AdminPanel />} />
+            {/* MFA at AAL2 is required for Admin/Manager across the app */}
+            <Route element={<MfaGuard />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/teams" element={<Teams />} />
+              <Route path="/calendar" element={<Calendar />} />
+              <Route path="/announcements" element={<Announcements />} />
+
+              {/* Admin Panel Route */}
+              <Route element={<RoleGuard allowedRoles={['Admin']} />}>
+                <Route path="/sys-admin-panel-k3m8" element={<AdminPanel />} />
+              </Route>
             </Route>
           </Route>
         </Route>

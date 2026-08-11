@@ -1,5 +1,6 @@
 import React, { createContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { reportError } from '../lib/errorReporting';
 import { User, Session, UserProfile, UserRole, UserStatus } from '../types';
 
 interface AuthContextType {
@@ -9,7 +10,7 @@ interface AuthContextType {
   userRole: UserRole;
   userStatus: UserStatus;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string, captchaToken?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null; message?: string }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
@@ -61,7 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       return data as UserProfile;
     } catch (err) {
-      console.error('Error fetching user profile:', err);
+      reportError(err, { where: 'AuthContext.fetchProfile', userId });
       return null;
     }
   };
@@ -128,13 +129,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // password is required — no mock / unauthenticated fallback exists.
   const signIn = async (
     email: string,
-    password: string
+    password: string,
+    captchaToken?: string
   ): Promise<{ error: Error | null }> => {
     setLoading(true);
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
+      options: captchaToken ? { captchaToken } : undefined,
     });
 
     if (error) {

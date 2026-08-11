@@ -36,8 +36,7 @@ export const Tasks: React.FC = () => {
     profile?.role === 'Admin' ||
     profile?.role === 'Manager' ||
     userRole === 'Admin' ||
-    userRole === 'Manager' ||
-    user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+    userRole === 'Manager';
 
   const [filterMode, setFilterMode] = useState<'assignedToMe' | 'all'>(
     isManagerOrAdmin ? 'all' : 'assignedToMe'

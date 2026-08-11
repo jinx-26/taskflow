@@ -46,7 +46,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { user, profile, userRole } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const isAdmin = userRole === 'Admin' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+  // Role comes from the database profile only — no email-string shortcuts.
+  const isAdmin = userRole === 'Admin';
 
   const loadUnreadCount = async () => {
     if (!user?.email) return;

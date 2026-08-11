@@ -17,6 +17,11 @@ dist-isolation
 .env.*
 !.env.example
 
+# Session changelog & temporary scripts — internal working notes, not for the repo
+memory.md
+supabase/apply_updates.sql
+
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

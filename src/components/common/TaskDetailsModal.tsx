@@ -87,8 +87,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     userRole === 'Admin' ||
     userRole === 'Manager' ||
     profile?.role === 'Admin' ||
-    profile?.role === 'Manager' ||
-    user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+    profile?.role === 'Manager';
 
   const loadAvailableMembers = async () => {
     try {

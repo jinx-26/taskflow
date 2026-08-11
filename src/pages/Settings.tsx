@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { MfaSetup } from '../components/common/MfaSetup';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Avatar } from '../components/ui/Avatar';
@@ -252,6 +253,18 @@ export const Settings: React.FC = () => {
               </Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Multi-factor authentication enrollment (required for Admin/Manager) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-bold text-slate-900">
+            Two-Factor Authentication
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MfaSetup />
         </CardContent>
       </Card>
 

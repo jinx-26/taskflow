@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.app.json && npx tsc --noEmit -p tsconfig.node.json
+
+      - name: Build
+        run: npm run build
+
+      # Generate TypeScript types from the live Supabase schema and fail the
+      # build if the checked-in types are out of date (schema drift guard).
+      - name: Generate Supabase types & check drift
+        run: |
+          npx supabase gen types typescript \
+            --project-id "$SUPABASE_PROJECT_REF" \
+            --schema public > src/types/database.types.ts
+          git diff --exit-code src/types/database.types.ts || \
+            (echo "::error ::database.types.ts is stale — run 'npm run gen:types' and commit" && exit 1)
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

@@ -104,7 +104,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   const userEmail = user?.email || 'user@taskflow.io';
   const userAvatar = profile?.avatar_url || user?.user_metadata?.avatar_url;
 
-  const isAdmin = userRole === 'Admin' || user?.email?.toLowerCase() === 'jignesh.giri2005@gmail.com';
+  // Role comes from the database profile only — no email-string shortcuts.
+  const isAdmin = userRole === 'Admin';
 
   return (
     <header className="sticky top-0 z-20 h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between transition-all duration-300">

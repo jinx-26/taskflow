@@ -11,6 +11,13 @@ import {
   getLockoutSeconds,
 } from '../lib/rateLimiter';
 import { PASSWORD_MIN, PASSWORD_MAX } from '../lib/passwordPolicy';
+import { Turnstile } from '@marsidev/react-turnstile';
+
+// Cloudflare Turnstile — enabled when a site key is configured AND when
+// "Captcha protection" is turned on in the Supabase dashboard
+// (Authentication → Attack Protection). If either side is missing the app
+// behaves as before (no captcha), leaving the choice env-driven.
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
 
 // Allowed roles a new user can request — Admin is never available here.
 const ALLOWED_ROLES = ['Manager', 'Lead', 'Member'] as const;
@@ -28,6 +35,9 @@ export const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // ─── Turnstile CAPTCHA token (cleared after every attempt so it refreshes) ──
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   // ─── Honeypot ─────────────────────────────────────────────────────────────
   // Hidden field — legitimate users never type in it; bots fill it automatically.
@@ -98,13 +108,20 @@ export const Login: React.FC = () => {
     const pwError = validatePassword(password, mode === 'signup');
     if (pwError) { setError(pwError); return; }
 
+    // CAPTCHA required when configured — block before hitting Supabase.
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setError('Please complete the CAPTCHA verification.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setSuccessMsg(null);
 
     // ── Sign in ──────────────────────────────────────────────────────────
     if (mode === 'signin') {
-      const { error: authError } = await signIn(email, password);
+      const { error: authError } = await signIn(email, password, captchaToken ?? undefined);
+      setCaptchaToken(null);
       setIsLoading(false);
 
       if (authError) {
@@ -134,8 +151,10 @@ export const Login: React.FC = () => {
         password,
         options: {
           data: { full_name: userFullName },
+          captchaToken: captchaToken ?? undefined,
         },
       });
+      setCaptchaToken(null);
 
       if (signUpError) {
         setIsLoading(false);
@@ -365,6 +384,18 @@ export const Login: React.FC = () => {
             </div>
           )}
         </div>
+
+        {TURNSTILE_SITE_KEY && (
+          <div className="flex justify-center pt-1">
+            <Turnstile
+              siteKey={TURNSTILE_SITE_KEY}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onExpire={() => setCaptchaToken(null)}
+              onError={() => setCaptchaToken(null)}
+              options={{ theme: 'light' }}
+            />
+          </div>
+        )}
 
         <Button
           type="submit"
