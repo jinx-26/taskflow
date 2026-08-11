@@ -231,14 +231,21 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           if (!uploadErr) {
             const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
             fileUrl = pubData.publicUrl;
+          } else {
+            console.warn('File upload storage error:', uploadErr.message);
           }
         } catch (storageErr) {
-          console.warn('File upload storage error, falling back:', storageErr);
+          console.warn('File upload storage error:', storageErr);
         }
       }
-      if (!fileUrl) {
-        fileUrl = URL.createObjectURL(file);
+
+      // Only keep files with a real, persistent URL.
+      // Blob URLs (URL.createObjectURL) are browser-session-only and break on Vercel/production.
+      if (!fileUrl || fileUrl.startsWith('blob:')) {
+        console.warn(`Skipping file "${file.name}": could not upload to Supabase Storage.`);
+        continue;
       }
+
       uploadedFilesList.push({ name: file.name, url: fileUrl });
     }
 

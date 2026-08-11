@@ -146,15 +146,28 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
           if (!uploadErr) {
             const { data: pubData } = supabase.storage.from('task-attachments').getPublicUrl(filePath);
             fileUrl = pubData.publicUrl;
+          } else {
+            console.warn('Storage upload error:', uploadErr.message);
           }
         } catch (storageErr) {
           console.warn('Review upload storage warning:', storageErr);
         }
       }
-      if (!fileUrl) {
-        fileUrl = URL.createObjectURL(file);
+
+      // Only save files that have a real persistent URL (not a blob: URL).
+      // Blob URLs are browser-session-only and break immediately on Vercel/production.
+      if (!fileUrl || fileUrl.startsWith('blob:')) {
+        console.warn(`Skipping file "${file.name}": could not upload to storage.`);
+        setSuccessMsg(`Upload failed for "${file.name}". Check Supabase Storage permissions.`);
+        continue;
       }
+
       newAttachments.push({ name: file.name, url: fileUrl });
+    }
+
+    if (newAttachments.length === 0) {
+      setIsUploadingReviewFile(false);
+      return;
     }
 
     // Append new markdown attachment links to description
@@ -633,15 +646,26 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                             </div>
                           </div>
 
-                          <a
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-xs shrink-0"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download Spec</span>
-                          </a>
+                          {att.url && !att.url.startsWith('blob:') ? (
+                            <a
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={att.name}
+                              className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 bg-white px-3 py-1.5 rounded-lg border border-brand-200 shadow-xs shrink-0"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download Spec</span>
+                            </a>
+                          ) : (
+                            <span
+                              title="File was uploaded offline and cannot be downloaded. Please re-upload the file."
+                              className="flex items-center gap-1 text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 shrink-0 cursor-not-allowed"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Unavailable</span>
+                            </span>
+                          )}
                         </div>
                       );
                     })}
