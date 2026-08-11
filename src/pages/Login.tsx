@@ -125,14 +125,16 @@ export const Login: React.FC = () => {
       setIsLoading(false);
 
       if (authError) {
+        console.error('[SignIn Error]', authError);
         const secs = recordFailedAttempt();
         setLockoutSecs(secs);
 
-        // Surface a generic error — never expose specific auth internals to the UI.
         if (authError.message.toLowerCase().includes('email not confirmed')) {
           setError('Your email address has not been confirmed. Please check your inbox.');
+        } else if (authError.message.toLowerCase().includes('captcha')) {
+          setError(`CAPTCHA Error: ${authError.message}`);
         } else {
-          setError('Invalid email or password. Please try again.');
+          setError(authError.message || 'Invalid email or password. Please try again.');
         }
       } else {
         clearAttempts();
