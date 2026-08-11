@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { X, CheckSquare, User, Calendar, Tag, AlertCircle, FileText, Clock, Layers, Users, Check, Upload, Paperclip } from 'lucide-react';
+import { 
+  X, CheckSquare, User, Calendar, Tag, AlertCircle, FileText, 
+  Clock, Layers, Users, Check, Upload, Paperclip, Plus, Trash2,
+  FolderGit2, ShieldAlert, Cpu, Sparkles, ChevronRight, UserCheck, UserPlus, Search
+} from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sendNotification } from '../../services/notificationService';
 import { addLocalTask } from '../../services/taskService';
-import { UserProfile, IssueType, CollaborationRequest } from '../../types';
+import { UserProfile, IssueType } from '../../types';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -27,8 +32,10 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [description, setDescription] = useState('');
   const [issueType, setIssueType] = useState<IssueType>('General Task');
   const [isStandalone, setIsStandalone] = useState(true);
-  const [project, setProject] = useState('General Task Hub');
+  const [projectId, setProjectId] = useState<string>('');
+  const [projectName, setProjectName] = useState('General Task Hub');
   const [priority, setPriority] = useState<'Urgent' | 'High' | 'Medium' | 'Low'>('High');
+
   const getNextWeekString = () => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
@@ -38,147 +45,175 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [dueDate, setDueDate] = useState(getNextWeekString());
   const [partNumber, setPartNumber] = useState('');
   const [hardwareRev, setHardwareRev] = useState('');
+  const [estimatedHours, setEstimatedHours] = useState<number>(8);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
-  
-  // File Attachment State (Up to 10 files)
+
+  // Interactive Subtasks Checklist
+  const [subtasks, setSubtasks] = useState<Array<{ id: string; title: string; completed: boolean }>>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+
+  // File Attachments
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
+  // Workspace Data & Jira-Style Assignment State
   const [workspaceMembers, setWorkspaceMembers] = useState<UserProfile[]>([]);
-  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
-  const [assignAll, setAssignAll] = useState(false);
-  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [projectsList, setProjectsList] = useState<Array<{ id: string; name: string; key: string }>>([]);
+  
+  // Jira Assignee & Collaborators Model
+  const [primaryAssigneeId, setPrimaryAssigneeId] = useState<string>('');
+  const [collaboratorIds, setCollaboratorIds] = useState<string[]>([]);
+  const [isAddingCollaborator, setIsAddingCollaborator] = useState(false);
+  const [collabSearchQuery, setCollabSearchQuery] = useState('');
 
-  const isManagerOrAdmin =
-    userRole === 'Admin' ||
-    userRole === 'Manager' ||
-    profile?.role === 'Admin' ||
-    profile?.role === 'Manager';
-
-  const loadWorkspaceMembers = async () => {
+  const loadData = async () => {
+    let fetchedMembers: UserProfile[] = [];
     try {
       if (isSupabaseConfigured) {
-        const { data, error } = await supabase
+        // Fetch profiles
+        const { data: profilesData } = await supabase
           .from('profiles')
           .select('*')
           .order('full_name', { ascending: true });
 
-        if (!error && data) {
-          const members: UserProfile[] = data.map((d: any) => ({
+        if (profilesData && profilesData.length > 0) {
+          fetchedMembers = profilesData.map((d: any) => ({
             id: d.id,
             full_name: d.full_name,
             role: d.role,
             status: d.status,
             avatar_url: d.avatar_url,
           }));
-          setWorkspaceMembers(members);
-          if (members.length > 0 && selectedAssigneeIds.length === 0) {
-            setSelectedAssigneeIds([members[0].id]);
+        }
+
+        // Fetch projects
+        const { data: projectsData } = await supabase
+          .from('projects')
+          .select('id, name, key')
+          .order('name', { ascending: true });
+
+        if (projectsData && projectsData.length > 0) {
+          setProjectsList(projectsData);
+          if (!projectId) {
+            setProjectId(projectsData[0].id);
+            setProjectName(projectsData[0].name);
           }
-          return;
         }
       }
     } catch (err) {
-      console.warn('Could not load profiles for task modal:', err);
+      console.warn('Could not load data for full-page task modal:', err);
     }
 
-    if (user) {
+    if (fetchedMembers.length === 0 && user) {
       const selfName = profile?.full_name || user.email?.split('@')[0] || 'Employee';
-      const selfMember: UserProfile = {
+      fetchedMembers = [{
         id: user.id,
         full_name: selfName,
         role: profile?.role || 'Member',
         status: 'Approved',
-      };
-      setWorkspaceMembers([selfMember]);
-      setSelectedAssigneeIds([user.id]);
+      }];
+    }
+
+    if (fetchedMembers.length > 0) {
+      setWorkspaceMembers(fetchedMembers);
+      if (user) {
+        const selfMember = fetchedMembers.find((m) => m.id === user.id);
+        setPrimaryAssigneeId((prev) => prev || (selfMember ? selfMember.id : fetchedMembers[0].id));
+      } else {
+        setPrimaryAssigneeId((prev) => prev || fetchedMembers[0].id);
+      }
     }
   };
 
+  // Pre-fetch workspace data as soon as user is authenticated
+  useEffect(() => {
+    loadData();
+  }, [user]);
+
   useEffect(() => {
     if (isOpen) {
-      loadWorkspaceMembers();
+      loadData();
       setAttachedFiles([]);
+      setSubtasks([]);
+      setCollaboratorIds([]);
+      setIsAddingCollaborator(false);
       setDueDate(getNextWeekString());
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const toggleUserSelection = (userId: string) => {
-    if (assignAll) setAssignAll(false);
-    setSelectedAssigneeIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+  const handleAssignToMe = () => {
+    if (user) {
+      setPrimaryAssigneeId(user.id);
+    }
+  };
+
+  const toggleCollaborator = (memberId: string) => {
+    if (memberId === primaryAssigneeId) return; // Primary assignee is handled separately
+    setCollaboratorIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
     );
   };
 
-  const handleSelectAll = () => {
-    setAssignAll(true);
-    setSelectedAssigneeIds(workspaceMembers.map((m) => m.id));
+  const removeCollaborator = (memberId: string) => {
+    setCollaboratorIds((prev) => prev.filter((id) => id !== memberId));
   };
 
-  const handleDeselectAll = () => {
-    setAssignAll(false);
-    setSelectedAssigneeIds([]);
+  const handleAddSubtask = () => {
+    if (!newSubtaskTitle.trim()) return;
+    setSubtasks((prev) => [
+      ...prev,
+      { id: `sub-${Date.now()}`, title: newSubtaskTitle.trim(), completed: false }
+    ]);
+    setNewSubtaskTitle('');
   };
 
-  const filteredMembers = workspaceMembers.filter((m) =>
-    m.full_name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    m.role.toLowerCase().includes(userSearchQuery.toLowerCase())
-  );
+  const handleRemoveSubtask = (id: string) => {
+    setSubtasks((prev) => prev.filter((s) => s.id !== id));
+  };
 
   const handleRemoveFile = (indexToRemove: number) => {
     setAttachedFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const filteredCollabMembers = workspaceMembers.filter(
+    (m) =>
+      m.id !== primaryAssigneeId &&
+      (m.full_name.toLowerCase().includes(collabSearchQuery.toLowerCase()) ||
+        m.role.toLowerCase().includes(collabSearchQuery.toLowerCase()))
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !user) return;
 
-    if (selectedAssigneeIds.length === 0 && !assignAll) {
-      alert('Please select at least one assignee for this task.');
+    if (!primaryAssigneeId) {
+      alert('Please select a primary assignee for this task.');
       return;
     }
 
     setIsSubmitting(true);
     const taskCode = `TSK-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const primaryAssigneeObj = workspaceMembers.find((m) => m.id === selectedAssigneeIds[0]) || {
+    const primaryAssigneeObj = workspaceMembers.find((m) => m.id === primaryAssigneeId) || {
       id: user.id,
       full_name: profile?.full_name || 'Assigned Member',
       avatar_url: profile?.avatar_url,
     };
 
     const secondaryMembers = workspaceMembers.filter(
-      (m) => selectedAssigneeIds.includes(m.id) && m.id !== primaryAssigneeObj.id
+      (m) => collaboratorIds.includes(m.id) && m.id !== primaryAssigneeObj.id
     );
 
-    let coAssigneesList: any[] = [];
-    let pendingInvitesList: CollaborationRequest[] = [];
+    const coAssigneesList = secondaryMembers.map((m) => ({
+      id: m.id,
+      name: m.full_name,
+      avatar: m.avatar_url,
+      role: m.role,
+    }));
 
-    if (isManagerOrAdmin) {
-      coAssigneesList = secondaryMembers.map((m) => ({
-        id: m.id,
-        name: m.full_name,
-        avatar: m.avatar_url,
-        role: m.role,
-      }));
-    } else {
-      pendingInvitesList = secondaryMembers.map((m) => ({
-        id: `inv-${Date.now()}-${m.id}`,
-        taskId: '',
-        taskCode: taskCode,
-        taskTitle: title.trim(),
-        invitedByName: profile?.full_name || 'Member',
-        invitedById: user.id,
-        targetUserId: m.id,
-        targetUserEmail: m.full_name,
-        status: 'Pending',
-        createdAt: new Date().toISOString(),
-      }));
-    }
-
-    // Process all attached files (Up to 10)
+    // Process all attached files
     const uploadedFilesList: Array<{ name: string; url: string }> = [];
 
     for (const file of attachedFiles) {
@@ -212,14 +247,16 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Full in-memory object for UI & State
+    const resolvedProject = isStandalone ? 'Standalone Task' : (projectName || 'General Task Hub');
+
     const fullTaskObject: any = {
       id: `task-${Date.now()}`,
       code: taskCode,
       title: title.trim(),
       description: description.trim(),
       issueType,
-      project: isStandalone ? 'Standalone Task' : project.trim(),
+      project: resolvedProject,
+      projectId: isStandalone ? null : (projectId || null),
       priority,
       status: 'Todo',
       assignee: {
@@ -228,23 +265,23 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         avatar: primaryAssigneeObj.avatar_url,
       },
       coAssignees: coAssigneesList,
-      pendingInvitations: pendingInvitesList,
+      pendingInvitations: [],
       attachmentUrl: uploadedFilesList[0]?.url || null,
       attachmentName: uploadedFilesList[0]?.name || null,
       attachments: uploadedFilesList,
       partNumber: partNumber.trim() || null,
       hardwareRev: hardwareRev.trim() || null,
+      estimatedHours: estimatedHours || 8,
       createdBy: user.id,
       createdByName: profile?.full_name || 'Member',
       dueDate,
       createdAt: new Date().toISOString(),
       activityLog: [activityLogEntry],
       comments: [],
-      subtasks: [],
+      subtasks: subtasks,
       isDeleted: false,
     };
 
-    // Store in local session cache immediately
     addLocalTask(fullTaskObject);
 
     const attachmentLinksMarkdown = uploadedFilesList
@@ -255,60 +292,50 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       ? `${description.trim()}\n\n${attachmentLinksMarkdown}`
       : description.trim();
 
-    // Payload for Supabase DB Insert (Only columns existing on Supabase schema cache)
     const dbInsertPayload: any = {
       code: taskCode,
       title: title.trim(),
       description: dbDescription,
       issue_type: issueType,
-      project: isStandalone ? 'Standalone Task' : project.trim(),
+      project: resolvedProject,
+      project_id: (!isStandalone && isUuid(projectId)) ? projectId : null,
       priority,
       status: 'Todo',
       assignee_id: isUuid(primaryAssigneeObj.id) ? primaryAssigneeObj.id : null,
       assignee_name: primaryAssigneeObj.full_name,
       assignee_avatar: primaryAssigneeObj.avatar_url || '',
       co_assignees: coAssigneesList,
-      pending_invitations: pendingInvitesList,
+      pending_invitations: [],
       part_number: partNumber.trim() || null,
       hardware_rev: hardwareRev.trim() || null,
+      estimated_hours: estimatedHours || 8,
       created_by: isUuid(user.id) ? user.id : null,
       due_date: dueDate,
+      subtasks: subtasks,
       activity_log: [activityLogEntry],
+      attachment_url: uploadedFilesList[0]?.url || null,
+      attachment_name: uploadedFilesList[0]?.name || null,
     };
 
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('tasks').insert([dbInsertPayload]).select().single();
-
         if (!error && data) {
           fullTaskObject.id = data.id;
         } else if (error) {
-          console.warn('Supabase task insert notice (saved to session fallback):', error.message);
+          console.warn('Supabase task insert notice (saved to local state):', error.message);
         }
 
-        // Notify primary assignee
         sendNotification({
           recipientEmail: primaryAssigneeObj.full_name,
           senderName: profile?.full_name || 'Member',
           title: `New Task Assignment: ${taskCode}`,
-          message: `You were assigned to task "${title.trim()}".`,
+          message: `You were assigned as primary owner of task "${title.trim()}".`,
           taskCode,
           type: 'assignment',
         }).catch(() => {});
-
-        // Notify secondary members with collaboration requests
-        secondaryMembers.forEach((targetMem) => {
-          sendNotification({
-            recipientEmail: targetMem.full_name,
-            senderName: profile?.full_name || 'Member',
-            title: `Task Collaboration Request: ${taskCode}`,
-            message: `${profile?.full_name || 'A team member'} requested your collaboration on task "${title.trim()}". Please accept or decline.`,
-            taskCode,
-            type: 'collab_request',
-          }).catch(() => {});
-        });
       } catch (err) {
-        console.warn('Task insert fallback triggered:', err);
+        console.warn('Task insert fallback:', err);
       }
     }
 
@@ -316,7 +343,6 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       onTaskCreated(fullTaskObject);
     }
 
-    // Broadcast custom event so all open views (Tasks, Dashboard, TopNav) update in real-time
     window.dispatchEvent(new CustomEvent('taskflow:task-created', { detail: fullTaskObject }));
 
     setSuccessMsg(`Task ${taskCode} created successfully!`);
@@ -327,303 +353,200 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       setTitle('');
       setDescription('');
       setAttachedFiles([]);
+      setSubtasks([]);
       onClose();
-    }, 1200);
+    }, 1000);
   };
 
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-150">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-brand-50 border border-brand-200/60 flex items-center justify-center text-brand-600 font-bold">
-              <CheckSquare className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-lg font-extrabold text-slate-900 leading-tight">Create & Assign New Task</h3>
-              <p className="text-xs text-slate-500">Assign to single or multiple team members</p>
-            </div>
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-white w-screen h-screen flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+      {/* Full-Page Top Header Bar */}
+      <div className="h-16 px-6 md:px-8 border-b border-slate-200 flex items-center justify-between bg-slate-50/90 backdrop-blur-md shrink-0 shadow-soft-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-extrabold shadow-soft">
+            <CheckSquare className="w-5 h-5" />
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <span>TaskFlow Workspaces</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-800 font-bold">{isStandalone ? 'Standalone Tasks' : projectName}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-brand-600 font-bold bg-brand-50 px-2 py-0.5 rounded border border-brand-200">New Task Specification</span>
+            </div>
+            <h2 className="text-sm font-extrabold text-slate-900">Create &amp; Assign Work Order / Task</h2>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {successMsg && (
+            <div className="px-3 py-1 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 flex items-center gap-1.5 animate-in fade-in">
+              <Check className="w-4 h-4 text-emerald-600" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={onClose} className="rounded-xl font-semibold">
+            Cancel
+          </Button>
+          <Button 
+            type="button" 
+            variant="primary" 
+            size="sm" 
+            isLoading={isSubmitting}
+            onClick={handleSubmit}
+            className="rounded-xl font-bold shadow-soft px-5"
+          >
+            Create &amp; Assign Task
+          </Button>
+          <div className="h-5 w-px bg-slate-200 mx-1" />
+          <button 
+            onClick={onClose} 
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-200/60 transition-colors"
+            title="Close Full Page"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
+      </div>
 
-        {successMsg && (
-          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-600" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Task Type Toggle */}
-          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsStandalone(true)}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                isStandalone ? 'bg-white text-brand-700 shadow-soft-xs' : 'text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              Standalone Task
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsStandalone(false)}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                !isStandalone ? 'bg-white text-brand-700 shadow-soft-xs' : 'text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              Project Task
-            </button>
-          </div>
-
-          {!isStandalone && (
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Project Name *</label>
-              <Input
-                required
-                value={project}
-                onChange={(e) => setProject(e.target.value)}
-                placeholder="e.g. WSS 5G Outdoor Unit Development"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Task Title *</label>
-            <Input
+      {/* 2-Column Full Page Body */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        
+        {/* LEFT COLUMN: Main Issue Content (65% width) */}
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto space-y-6 border-r border-slate-200">
+          
+          {/* Task Title Field */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">
+              Task Title / Summary *
+            </label>
+            <input
+              type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. PCB Schematics & RF Layout Review"
+              placeholder="e.g. PCB Schematics & RF Layout Review for 5G Outdoor Unit"
+              className="w-full text-xl md:text-2xl font-extrabold text-slate-900 placeholder:text-slate-300 border-b-2 border-slate-200 pb-2 focus:outline-none focus:border-brand-600 transition-colors bg-transparent"
+              autoFocus
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Category / Type</label>
-              <select
-                value={issueType}
-                onChange={(e) => setIssueType(e.target.value as IssueType)}
-                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="General Task">General Task</option>
-                <option value="PCB Layout">PCB Layout</option>
-                <option value="Hardware Design">Hardware Design</option>
-                <option value="Mechanical CAD">Mechanical CAD</option>
-                <option value="Firmware Flash">Firmware Flash</option>
-                <option value="QA & Compliance">QA & Compliance</option>
-                <option value="Component Procurement">Component Procurement</option>
-                <option value="Field Issue">Field Issue</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Priority</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as any)}
-                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="Urgent">Urgent</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Due Date *</label>
-              <input
-                type="date"
-                required
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full rounded-xl border border-brand-300 bg-brand-50/50 p-2 text-xs font-bold text-brand-900 focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
-          </div>
-
-          {/* Quick Due Date Presets Bar */}
-          <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1 shrink-0">
-              <Calendar className="w-3.5 h-3.5 text-brand-600" />
-              Quick Due Date:
-            </span>
-            <div className="flex items-center gap-1.5 flex-1 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setDueDate(new Date().toISOString().split('T')[0])}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-colors ${
-                  dueDate === new Date().toISOString().split('T')[0]
-                    ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  setDueDate(tomorrow.toISOString().split('T')[0]);
-                }}
-                className="px-2.5 py-1 text-[11px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Tomorrow
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const nextWeek = new Date();
-                  nextWeek.setDate(nextWeek.getDate() + 7);
-                  setDueDate(nextWeek.toISOString().split('T')[0]);
-                }}
-                className="px-2.5 py-1 text-[11px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                +1 Week
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const nextMonth = new Date();
-                  nextMonth.setDate(nextMonth.getDate() + 30);
-                  setDueDate(nextMonth.toISOString().split('T')[0]);
-                }}
-                className="px-2.5 py-1 text-[11px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                +1 Month
-              </button>
-            </div>
-          </div>
-
-          {/* Searchable Multi-Assignee Selection List with Select All */}
-          <div className="space-y-2 pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 uppercase">
-                Assign to Employees ({selectedAssigneeIds.length} Selected)
-              </label>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleSelectAll}
-                  className="text-[11px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 px-2 py-0.5 rounded border border-brand-200"
-                >
-                  Assign to All
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeselectAll}
-                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 px-2 py-0.5 rounded"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <Input
-              value={userSearchQuery}
-              onChange={(e) => setUserSearchQuery(e.target.value)}
-              placeholder="Search member name or team role..."
-              className="py-1.5 text-xs"
-            />
-
-            <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 divide-y divide-slate-100 space-y-1 bg-slate-50/50">
-              {filteredMembers.length === 0 ? (
-                <p className="text-[11px] text-slate-400 p-2 text-center">No approved members found.</p>
-              ) : (
-                filteredMembers.map((m) => {
-                  const isChecked = selectedAssigneeIds.includes(m.id);
-                  return (
-                    <label
-                      key={m.id}
-                      className="flex items-center justify-between p-1.5 hover:bg-white rounded-lg cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleUserSelection(m.id)}
-                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4"
-                        />
-                        <span className="text-xs font-bold text-slate-800">{m.full_name}</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                        {m.role}
-                      </span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* File Attachment Input (Up to 10 files) */}
+          {/* Description Editor Area */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-700 uppercase">
-                Attach Documents / Specification Files ({attachedFiles.length}/10 Attached)
+              <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-slate-400" />
+                Description &amp; Work Breakdown Structure
+              </label>
+              <span className="text-[11px] text-slate-400 font-medium">Supports rich markdown &amp; specs</span>
+            </div>
+            <textarea
+              rows={7}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe detailed technical requirements, Acceptance Criteria, hardware specs, block diagrams, or instructions for the assignee..."
+              className="w-full rounded-2xl border border-slate-200 p-4 text-sm text-slate-800 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 focus:outline-none bg-slate-50/50 transition-all font-sans leading-relaxed"
+            />
+          </div>
+
+          {/* Interactive Subtasks Checklist Builder */}
+          <div className="space-y-3 pt-2">
+            <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-brand-600" />
+                Subtasks &amp; Deliverables Checklist ({subtasks.length})
+              </span>
+            </label>
+
+            <div className="flex gap-2">
+              <Input
+                value={newSubtaskTitle}
+                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddSubtask(); } }}
+                placeholder="Add a subtask item (e.g. Verify impedance matching tolerance)..."
+                className="text-xs py-2"
+              />
+              <Button type="button" variant="outline" size="sm" onClick={handleAddSubtask} className="shrink-0 rounded-xl">
+                <Plus className="w-4 h-4 mr-1" /> Add
+              </Button>
+            </div>
+
+            {subtasks.length > 0 && (
+              <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                {subtasks.map((st) => (
+                  <div key={st.id} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-soft-xs">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4 text-brand-600" />
+                      <span className="text-xs font-semibold text-slate-800">{st.title}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSubtask(st.id)}
+                      className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* File Attachments Dropzone */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Paperclip className="w-4 h-4 text-brand-600" />
+                Technical Specifications &amp; Attachments ({attachedFiles.length}/10)
               </label>
               {attachedFiles.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setAttachedFiles([])}
-                  className="text-[11px] font-semibold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-red-600 hover:underline"
                 >
-                  Clear All
+                  Remove All
                 </button>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {attachedFiles.length < 10 && (
-                <label className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-colors">
-                  <Upload className="w-4 h-4 text-slate-500" />
-                  <span>Add File(s)...</span>
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files) {
-                        const selected = Array.from(e.target.files);
-                        const combined = [...attachedFiles, ...selected];
-                        if (combined.length > 10) {
-                          alert('Guardrail Warning: You can attach a maximum of 10 files per task.');
-                          setAttachedFiles(combined.slice(0, 10));
-                        } else {
-                          setAttachedFiles(combined);
-                        }
-                      }
-                    }}
-                  />
-                </label>
-              )}
-
-              <span className="text-[11px] text-slate-500 font-medium">
-                Supports up to 10 files (PDF, Word, Excel, PPTX, ZIP, CAD, Images, etc.)
-              </span>
+            <div className="border-2 border-dashed border-slate-200 hover:border-brand-400 rounded-2xl p-6 bg-slate-50/50 transition-colors text-center">
+              <Upload className="w-8 h-8 text-brand-500 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-700">Drag and drop specification files here, or browse</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Supports PDF, Word, Excel, CAD Gerber, ZIP, Images (up to 10 files)</p>
+              <label className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-xl border border-slate-300 shadow-soft-xs cursor-pointer transition-colors">
+                <Paperclip className="w-3.5 h-3.5 text-brand-600" />
+                Select File(s)
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      const selected = Array.from(e.target.files);
+                      const combined = [...attachedFiles, ...selected];
+                      setAttachedFiles(combined.slice(0, 10));
+                    }
+                  }}
+                />
+              </label>
             </div>
 
-            {/* List of attached files */}
             {attachedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1 max-h-28 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {attachedFiles.map((file, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-brand-50 text-brand-700 rounded-lg text-xs font-medium border border-brand-200 truncate max-w-xs"
+                    className="flex items-center justify-between p-2.5 bg-brand-50/60 border border-brand-200 rounded-xl text-xs font-semibold text-brand-900"
                   >
-                    <Paperclip className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{file.name}</span>
+                    <div className="flex items-center gap-2 truncate">
+                      <Paperclip className="w-4 h-4 text-brand-600 shrink-0" />
+                      <span className="truncate">{file.name}</span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveFile(idx)}
-                      className="text-brand-400 hover:text-brand-700 ml-1 font-bold"
+                      className="text-brand-400 hover:text-brand-700 font-bold p-1"
                     >
                       ×
                     </button>
@@ -633,27 +556,329 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             )}
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description & Instructions</label>
-            <textarea
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detailed work breakdown, PCB requirements, component part numbers..."
-              className="w-full rounded-xl border border-slate-300 p-2.5 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
-            />
+        </div>
+
+        {/* RIGHT COLUMN: Jira-Style Attributes & Assignment Sidebar (35% width) */}
+        <div className="w-full md:w-[380px] bg-slate-50/70 p-6 overflow-y-auto space-y-6 shrink-0 border-t md:border-t-0 md:border-l border-slate-200">
+          
+          {/* Task Scope & Project Linkage */}
+          <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-soft-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                <FolderGit2 className="w-4 h-4 text-brand-600" />
+                Project Scope
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setIsStandalone(true)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  isStandalone ? 'bg-white text-brand-700 shadow-soft-xs' : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                Standalone
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsStandalone(false)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  !isStandalone ? 'bg-white text-brand-700 shadow-soft-xs' : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                Project Task
+              </button>
+            </div>
+
+            {!isStandalone && (
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase">Select Project *</label>
+                {projectsList.length > 0 ? (
+                  <select
+                    value={projectId}
+                    onChange={(e) => {
+                      setProjectId(e.target.value);
+                      const found = projectsList.find((p) => p.id === e.target.value);
+                      if (found) setProjectName(found.name);
+                    }}
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-900 bg-white focus:ring-2 focus:ring-brand-500"
+                  >
+                    {projectsList.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.key})</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    placeholder="e.g. 5G PCB Development"
+                  />
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" size="sm" isLoading={isSubmitting}>
-              Create & Assign Task
-            </Button>
+          {/* JIRA-STYLE PRIMARY ASSIGNEE & COLLABORATORS */}
+          <div className="space-y-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-soft-xs">
+            
+            {/* Primary Assignee Selector + "Assign to me" Button */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-brand-600" />
+                  Primary Assignee *
+                </label>
+                {user && (
+                  <button
+                    type="button"
+                    onClick={handleAssignToMe}
+                    className="text-[11px] font-bold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2 py-0.5 rounded-lg border border-brand-200/80 flex items-center gap-1 transition-colors"
+                  >
+                    <UserCheck className="w-3 h-3" /> Assign to me
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={primaryAssigneeId}
+                onChange={(e) => setPrimaryAssigneeId(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-900 bg-white focus:ring-2 focus:ring-brand-500"
+              >
+                {workspaceMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.full_name} ({m.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Collaborators / Watchers Chips & Add Popover */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-slate-500" />
+                  Collaborators ({collaboratorIds.length})
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingCollaborator(!isAddingCollaborator)}
+                  className="text-[11px] font-bold text-brand-600 hover:text-brand-800 flex items-center gap-1 bg-slate-100 hover:bg-slate-200/70 px-2 py-0.5 rounded-lg transition-colors"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  {isAddingCollaborator ? 'Done' : '+ Add'}
+                </button>
+              </div>
+
+              {/* Selected Collaborators Avatar Chips */}
+              <div className="flex flex-wrap gap-1.5 min-h-[32px] items-center">
+                {collaboratorIds.length === 0 ? (
+                  <span className="text-[11px] text-slate-400 italic">No secondary collaborators added.</span>
+                ) : (
+                  collaboratorIds.map((id) => {
+                    const member = workspaceMembers.find((m) => m.id === id);
+                    if (!member) return null;
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-slate-800 border border-slate-200 shadow-soft-xs transition-colors"
+                      >
+                        <div className="w-4 h-4 rounded-full bg-brand-600 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                          {member.full_name.charAt(0)}
+                        </div>
+                        <span>{member.full_name}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeCollaborator(id)}
+                          className="text-slate-400 hover:text-red-600 font-bold ml-0.5 text-sm"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Add Collaborators Search Popover */}
+              {isAddingCollaborator && (
+                <div className="space-y-2 pt-2 border-t border-slate-200 animate-in fade-in-50 duration-150">
+                  <Input
+                    value={collabSearchQuery}
+                    onChange={(e) => setCollabSearchQuery(e.target.value)}
+                    placeholder="Search member to add..."
+                    leftIcon={<Search className="w-3.5 h-3.5 text-slate-400" />}
+                    className="py-1 text-xs"
+                    autoFocus
+                  />
+                  <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-1.5 divide-y divide-slate-100 bg-white">
+                    {filteredCollabMembers.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 p-2 text-center">No available members to add.</p>
+                    ) : (
+                      filteredCollabMembers.map((m) => {
+                        const isAdded = collaboratorIds.includes(m.id);
+                        return (
+                          <div
+                            key={m.id}
+                            onClick={() => toggleCollaborator(m.id)}
+                            className={`flex items-center justify-between p-1.5 rounded-lg cursor-pointer text-xs transition-colors ${
+                              isAdded ? 'bg-brand-50 text-brand-900 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded-full bg-slate-200 font-bold text-[10px] text-slate-700 flex items-center justify-center shrink-0">
+                                {m.full_name.charAt(0)}
+                              </div>
+                              <span>{m.full_name}</span>
+                            </div>
+                            {isAdded ? (
+                              <Check className="w-3.5 h-3.5 text-brand-600" />
+                            ) : (
+                              <Plus className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
-        </form>
+
+          {/* Issue Attributes & Metadata */}
+          <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-soft-xs">
+            <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Tag className="w-4 h-4 text-brand-600" />
+              Issue Attributes
+            </span>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase">Category / Issue Type</label>
+              <select
+                value={issueType}
+                onChange={(e) => setIssueType(e.target.value as IssueType)}
+                className="w-full rounded-xl border border-slate-300 p-2 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="General Task">General Task</option>
+                <option value="PCB Layout">PCB Layout</option>
+                <option value="Hardware Design">Hardware Design</option>
+                <option value="Mechanical CAD">Mechanical CAD</option>
+                <option value="Firmware Flash">Firmware Flash</option>
+                <option value="QA & Compliance">QA &amp; Compliance</option>
+                <option value="Component Procurement">Component Procurement</option>
+                <option value="Field Issue">Field Issue</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase">Priority Level</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as any)}
+                className="w-full rounded-xl border border-slate-300 p-2 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="Urgent">🔴 Urgent</option>
+                <option value="High">🟠 High</option>
+                <option value="Medium">🟡 Medium</option>
+                <option value="Low">🔵 Low</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase">Due Date *</label>
+              <input
+                type="date"
+                required
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-xl border border-brand-300 bg-brand-50/50 p-2 text-xs font-bold text-brand-900 focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+
+            {/* Quick Due Presets */}
+            <div className="flex items-center gap-1 flex-wrap pt-1">
+              <button
+                type="button"
+                onClick={() => setDueDate(new Date().toISOString().split('T')[0])}
+                className="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  setDueDate(d.toISOString().split('T')[0]);
+                }}
+                className="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 7);
+                  setDueDate(d.toISOString().split('T')[0]);
+                }}
+                className="px-2 py-0.5 text-[10px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
+              >
+                +1 Wk
+              </button>
+            </div>
+          </div>
+
+          {/* Hardware Specifications */}
+          <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-soft-xs">
+            <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-brand-600" />
+              Hardware Specifications
+            </span>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase">Part Number</label>
+                <input
+                  type="text"
+                  value={partNumber}
+                  onChange={(e) => setPartNumber(e.target.value)}
+                  placeholder="e.g. PN-9941"
+                  className="w-full text-xs p-2 rounded-xl border border-slate-200"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase">HW Rev</label>
+                <input
+                  type="text"
+                  value={hardwareRev}
+                  onChange={(e) => setHardwareRev(e.target.value)}
+                  placeholder="e.g. Rev C2"
+                  className="w-full text-xs p-2 rounded-xl border border-slate-200"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase">Est. Work Hours</label>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(Number(e.target.value))}
+                className="w-full text-xs p-2 rounded-xl border border-slate-200 font-bold"
+              />
+            </div>
+          </div>
+
+        </div>
+
       </div>
-    </div>
+
+    </div>,
+    document.body
   );
 };
