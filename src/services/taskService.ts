@@ -218,71 +218,34 @@ export async function respondToInvite(
   accept: boolean
 ): Promise<boolean> {
   try {
-    // 1. Fetch target task
-    const { data: taskData, error: taskErr } = await supabase
-      .from('tasks')
-      .select('id, code, co_assignees, pending_invitations, activity_log')
-      .eq('id', taskId)
-      .single();
+    // Call the SECURITY DEFINER RPC — this bypasses the UPDATE RLS policy
+    // which previously blocked co-assignees (non-creator, non-primary-assignee)
+    // from updating the task's co_assignees column.
+    const { data, error } = await supabase.rpc('respond_to_task_invite', {
+      p_task_id:   taskId,
+      p_invite_id: inviteId,
+      p_accept:    accept,
+    });
 
-    if (taskErr || !taskData) return false;
-
-    const pendingInvites: CollaborationRequest[] = taskData.pending_invitations || [];
-    const coAssignees = taskData.co_assignees || [];
-
-    const targetInvite = pendingInvites.find((i) => i.id === inviteId || i.targetUserId === userProfile.id);
-
-    // Remove invite from pending
-    const remainingInvites = pendingInvites.filter((i) => i.id !== inviteId && i.targetUserId !== userProfile.id);
-
-    let updatedCoAssignees = coAssignees;
-
-    if (accept) {
-      // Add user to co-assignees if not already present
-      if (!coAssignees.some((c: any) => c.id === userProfile.id || c.name === userProfile.full_name)) {
-        updatedCoAssignees = [
-          ...coAssignees,
-          {
-            id: userProfile.id,
-            name: userProfile.full_name,
-            avatar: userProfile.avatar_url,
-            role: userProfile.role,
-          },
-        ];
-      }
+    if (error) {
+      console.error('respond_to_task_invite RPC error:', error.message);
+      return false;
     }
 
-    // Add activity log entry
-    const existingLogs = taskData.activity_log || [];
-    const newLog = {
-      id: `log-${Date.now()}`,
-      userName: userProfile.full_name,
-      userAvatar: userProfile.avatar_url,
-      action: accept
-        ? `accepted collaboration invite and joined task as co-assignee.`
-        : `declined collaboration invite.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+    if (!data?.success) {
+      console.error('respond_to_task_invite failed:', data?.error);
+      return false;
+    }
 
-    // Update DB
-    await supabase
-      .from('tasks')
-      .update({
-        pending_invitations: remainingInvites,
-        co_assignees: updatedCoAssignees,
-        activity_log: [newLog, ...existingLogs],
-      })
-      .eq('id', taskId);
-
-    // Send confirmation notification to original inviter if invite existed
-    if (targetInvite) {
+    // Send confirmation notification to original inviter
+    if (data.invitedByName) {
       await sendNotification({
-        recipientEmail: targetInvite.invitedByName, // NOTE: store real email in CollaborationRequest.invitedByEmail
+        recipientEmail: data.invitedByName,
         senderName: userProfile.full_name,
         senderAvatar: userProfile.avatar_url,
         title: accept ? `Collaboration Invite Accepted` : `Collaboration Invite Declined`,
-        message: `${userProfile.full_name} has ${accept ? 'accepted' : 'declined'} your request to collaborate on ${taskData.code}.`,
-        taskCode: taskData.code,
+        message: `${userProfile.full_name} has ${accept ? 'accepted' : 'declined'} your request to collaborate on ${data.taskCode}.`,
+        taskCode: data.taskCode,
         type: 'collab_response',
       });
     }
@@ -293,3 +256,4 @@ export async function respondToInvite(
     return false;
   }
 }
+
