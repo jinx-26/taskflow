@@ -317,25 +317,30 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       attachment_name: uploadedFilesList[0]?.name || null,
     };
 
+    let insertSuccess = true;
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('tasks').insert([dbInsertPayload]).select().single();
         if (!error && data) {
           fullTaskObject.id = data.id;
         } else if (error) {
-          console.warn('Supabase task insert notice (saved to local state):', error.message);
+          console.error('Supabase task insert error:', error.message);
+          insertSuccess = false;
+          alert(`Could not save task to database: ${error.message}`);
         }
 
-        sendNotification({
-          recipientEmail: primaryAssigneeObj.full_name,
-          senderName: profile?.full_name || 'Member',
-          title: `New Task Assignment: ${taskCode}`,
-          message: `You were assigned as primary owner of task "${title.trim()}".`,
-          taskCode,
-          type: 'assignment',
-        }).catch(() => {});
-      } catch (err) {
-        console.warn('Task insert fallback:', err);
+        if (insertSuccess) {
+          sendNotification({
+            recipientEmail: primaryAssigneeObj.full_name,
+            senderName: profile?.full_name || 'Member',
+            title: `New Task Assignment: ${taskCode}`,
+            message: `You were assigned as primary owner of task "${title.trim()}".`,
+            taskCode,
+            type: 'assignment',
+          }).catch(() => {});
+        }
+      } catch (err: any) {
+        console.error('Task insert exception:', err);
       }
     }
 
