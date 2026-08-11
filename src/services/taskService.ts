@@ -83,7 +83,7 @@ export async function fetchLiveTasks(): Promise<TaskPlaceholder[]> {
 
           return {
             id: t.id,
-            code: t.code || 'TSK-101',
+            code: t.code || '—',
             title: t.title,
             description: cleanDescription,
             issueType: t.issue_type || 'Task',

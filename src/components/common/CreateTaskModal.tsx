@@ -194,7 +194,10 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     }
 
     setIsSubmitting(true);
-    const taskCode = `TSK-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // taskCode will be assigned by the DB SEQUENCE trigger.
+    // We use a temporary placeholder until the DB returns the real code.
+    let taskCode = 'TSK-???';
 
     const primaryAssigneeObj = workspaceMembers.find((m) => m.id === primaryAssigneeId) || {
       id: user.id,
@@ -239,6 +242,75 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       uploadedFilesList.push({ name: file.name, url: fileUrl });
     }
 
+    const resolvedProject = isStandalone ? 'Standalone Task' : (projectName || 'General Task Hub');
+
+    const attachmentLinksMarkdown = uploadedFilesList
+      .map((f) => `📎 Attachment: [${f.name}](${f.url})`)
+      .join('\n');
+
+    const dbDescription = attachmentLinksMarkdown
+      ? `${description.trim()}\n\n${attachmentLinksMarkdown}`
+      : description.trim();
+
+    // Do NOT send `code` — the DB BEFORE INSERT trigger (task_code_seq)
+    // assigns a guaranteed-unique sequential code automatically.
+    const dbInsertPayload: any = {
+      title: title.trim(),
+      description: dbDescription,
+      issue_type: issueType,
+      project: resolvedProject,
+      project_id: (!isStandalone && isUuid(projectId)) ? projectId : null,
+      priority,
+      status: 'Todo',
+      assignee_id: isUuid(primaryAssigneeObj.id) ? primaryAssigneeObj.id : null,
+      assignee_name: primaryAssigneeObj.full_name,
+      assignee_avatar: primaryAssigneeObj.avatar_url || '',
+      co_assignees: coAssigneesList,
+      pending_invitations: [],
+      part_number: partNumber.trim() || null,
+      hardware_rev: hardwareRev.trim() || null,
+      estimated_hours: estimatedHours || 8,
+      created_by: isUuid(user.id) ? user.id : null,
+      due_date: dueDate,
+      subtasks: subtasks,
+      attachment_url: uploadedFilesList[0]?.url || null,
+      attachment_name: uploadedFilesList[0]?.name || null,
+    };
+
+    let insertSuccess = false;
+    let insertedId = `task-${Date.now()}`;
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .insert([dbInsertPayload])
+          .select('id, code')
+          .single();
+
+        if (!error && data) {
+          insertedId = data.id;
+          // Real code assigned by DB SEQUENCE trigger — guaranteed unique & sequential
+          taskCode = data.code;
+          insertSuccess = true;
+        } else if (error) {
+          console.error('Supabase task insert error:', error.message);
+          alert(`Could not save task to database: ${error.message}`);
+          setIsSubmitting(false);
+          return;
+        }
+      } catch (err: any) {
+        console.error('Task insert exception:', err);
+        setIsSubmitting(false);
+        return;
+      }
+    } else {
+      // Offline fallback: generate a local code when Supabase is not configured
+      taskCode = `TSK-${Date.now().toString().slice(-5)}`;
+      insertSuccess = true;
+    }
+
+    // Build the activity log entry now that we have the real DB-assigned code
     const activityLogEntry = {
       id: `log-${Date.now()}`,
       userName: profile?.full_name || 'Member',
@@ -247,10 +319,17 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    const resolvedProject = isStandalone ? 'Standalone Task' : (projectName || 'General Task Hub');
+    // Patch the activity_log on the newly created row with the real code
+    if (isSupabaseConfigured && insertSuccess) {
+      supabase
+        .from('tasks')
+        .update({ activity_log: [activityLogEntry] })
+        .eq('id', insertedId)
+        .then(() => {});
+    }
 
     const fullTaskObject: any = {
-      id: `task-${Date.now()}`,
+      id: insertedId,
       code: taskCode,
       title: title.trim(),
       description: description.trim(),
@@ -284,64 +363,15 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
     addLocalTask(fullTaskObject);
 
-    const attachmentLinksMarkdown = uploadedFilesList
-      .map((f) => `📎 Attachment: [${f.name}](${f.url})`)
-      .join('\n');
-
-    const dbDescription = attachmentLinksMarkdown
-      ? `${description.trim()}\n\n${attachmentLinksMarkdown}`
-      : description.trim();
-
-    const dbInsertPayload: any = {
-      code: taskCode,
-      title: title.trim(),
-      description: dbDescription,
-      issue_type: issueType,
-      project: resolvedProject,
-      project_id: (!isStandalone && isUuid(projectId)) ? projectId : null,
-      priority,
-      status: 'Todo',
-      assignee_id: isUuid(primaryAssigneeObj.id) ? primaryAssigneeObj.id : null,
-      assignee_name: primaryAssigneeObj.full_name,
-      assignee_avatar: primaryAssigneeObj.avatar_url || '',
-      co_assignees: coAssigneesList,
-      pending_invitations: [],
-      part_number: partNumber.trim() || null,
-      hardware_rev: hardwareRev.trim() || null,
-      estimated_hours: estimatedHours || 8,
-      created_by: isUuid(user.id) ? user.id : null,
-      due_date: dueDate,
-      subtasks: subtasks,
-      activity_log: [activityLogEntry],
-      attachment_url: uploadedFilesList[0]?.url || null,
-      attachment_name: uploadedFilesList[0]?.name || null,
-    };
-
-    let insertSuccess = true;
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.from('tasks').insert([dbInsertPayload]).select().single();
-        if (!error && data) {
-          fullTaskObject.id = data.id;
-        } else if (error) {
-          console.error('Supabase task insert error:', error.message);
-          insertSuccess = false;
-          alert(`Could not save task to database: ${error.message}`);
-        }
-
-        if (insertSuccess) {
-          sendNotification({
-            recipientEmail: primaryAssigneeObj.full_name,
-            senderName: profile?.full_name || 'Member',
-            title: `New Task Assignment: ${taskCode}`,
-            message: `You were assigned as primary owner of task "${title.trim()}".`,
-            taskCode,
-            type: 'assignment',
-          }).catch(() => {});
-        }
-      } catch (err: any) {
-        console.error('Task insert exception:', err);
-      }
+    if (insertSuccess) {
+      sendNotification({
+        recipientEmail: primaryAssigneeObj.full_name,
+        senderName: profile?.full_name || 'Member',
+        title: `New Task Assignment: ${taskCode}`,
+        message: `You were assigned as primary owner of task "${title.trim()}".`,
+        taskCode,
+        type: 'assignment',
+      }).catch(() => {});
     }
 
     if (onTaskCreated) {
