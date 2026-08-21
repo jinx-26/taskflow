@@ -164,7 +164,7 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     if (!newSubtaskTitle.trim()) return;
     setSubtasks((prev) => [
       ...prev,
-      { id: `sub-${Date.now()}`, title: newSubtaskTitle.trim(), completed: false }
+      { id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, title: newSubtaskTitle.trim(), completed: false }
     ]);
     setNewSubtaskTitle('');
   };
@@ -284,8 +284,25 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       attachment_name: uploadedFilesList[0]?.name || null,
     };
 
+    const generateUniqueFallbackId = (): string => {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
+    const generateUniqueFallbackCode = (): string => {
+      const timestamp = Date.now().toString(36).toUpperCase();
+      const randomSalt = Math.random().toString(36).substring(2, 6).toUpperCase();
+      return `TSK-${timestamp}-${randomSalt}`;
+    };
+
     let insertSuccess = false;
-    let insertedId = `task-${Date.now()}`;
+    let insertedId = generateUniqueFallbackId();
 
     if (isSupabaseConfigured) {
       try {
@@ -312,14 +329,14 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         return;
       }
     } else {
-      // Offline fallback: generate a local code when Supabase is not configured
-      taskCode = `TSK-${Date.now().toString().slice(-5)}`;
+      // Offline fallback: generate a collision-proof unique local code
+      taskCode = generateUniqueFallbackCode();
       insertSuccess = true;
     }
 
     // Build the activity log entry now that we have the real DB-assigned code
     const activityLogEntry = {
-      id: `log-${Date.now()}`,
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userName: profile?.full_name || 'Member',
       userAvatar: profile?.avatar_url,
       action: `created task ${taskCode}${uploadedFilesList.length > 0 ? ` with ${uploadedFilesList.length} file attachment(s)` : ''}.`,

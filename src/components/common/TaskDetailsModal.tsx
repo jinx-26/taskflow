@@ -281,7 +281,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
   const handleStatusChange = async (newStatus: any) => {
     setCurrentStatus(newStatus);
     const newLog = {
-      id: `log-${Date.now()}`,
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userName: profile?.full_name || 'Member',
       userAvatar: profile?.avatar_url,
       action: `updated status to "${newStatus}".`,
@@ -325,7 +325,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
       setCoAssignees(updatedCoAssignees);
 
       const newLog = {
-        id: `log-${Date.now()}`,
+        id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         userName: profile.full_name,
         userAvatar: profile.avatar_url,
         action: `added ${selectedInviteUser.full_name} as a co-assignee.`,
@@ -363,7 +363,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
         setPendingInvitations((prev) => [
           ...prev,
           {
-            id: `inv-${Date.now()}`,
+            id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             taskId: task.id,
             taskCode: task.code,
             taskTitle: task.title,
@@ -387,7 +387,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     if (!newComment.trim()) return;
 
     const commentObj = {
-      id: `comment-${Date.now()}`,
+      id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       authorName: profile?.full_name || 'Workspace Member',
       authorAvatar: profile?.avatar_url,
       text: newComment.trim(),
@@ -399,7 +399,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
     setNewComment('');
 
     const newLog = {
-      id: `log-${Date.now()}`,
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userName: profile?.full_name || 'Member',
       userAvatar: profile?.avatar_url,
       action: `commented: "${newComment.trim().slice(0, 40)}${newComment.length > 40 ? '...' : ''}"`,

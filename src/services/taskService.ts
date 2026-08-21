@@ -25,11 +25,32 @@ export function formatDisplayDate(dateStr?: string): string {
 }
 
 // Local in-memory session cache for tasks created during session
-const localTasksCache: TaskPlaceholder[] = [];
+let localTasksCache: TaskPlaceholder[] = [];
+
+export function clearLocalTasksCache() {
+  localTasksCache = [];
+}
 
 export function addLocalTask(task: TaskPlaceholder) {
   if (!localTasksCache.some((t) => t.id === task.id || t.code === task.code)) {
     localTasksCache.unshift(task);
+  }
+}
+
+export async function clearAllTasks(): Promise<{ success: boolean; error?: string }> {
+  try {
+    clearLocalTasksCache();
+    if (isSupabaseConfigured) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('clear_all_tasks');
+      if (rpcError) {
+        const { error: delError } = await supabase.from('tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (delError) throw delError;
+      }
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to clear all tasks:', err);
+    return { success: false, error: err?.message || 'Unknown error' };
   }
 }
 
@@ -156,7 +177,7 @@ export async function inviteCoAssignee(
 ): Promise<boolean> {
   try {
     const newInvite: CollaborationRequest = {
-      id: `inv-${Date.now()}`,
+      id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       taskId: task.id,
       taskCode: task.code,
       taskTitle: task.title,
@@ -174,7 +195,7 @@ export async function inviteCoAssignee(
     // Log timeline activity
     const existingLogs = task.activityLog || [];
     const newLog = {
-      id: `log-${Date.now()}`,
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userName: inviter.full_name,
       userAvatar: inviter.avatar_url,
       action: `sent a collaboration invitation to ${target.full_name}.`,
