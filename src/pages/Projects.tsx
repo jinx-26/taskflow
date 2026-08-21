@@ -268,9 +268,34 @@ export const Projects: React.FC = () => {
     }
   };
 
+  // Real-Time WebSocket Channel for Projects, Members, and Discussions
   useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+
     loadProjectsData();
-  }, [user]);
+
+    const channel = supabase
+      .channel('projects_page_live_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'projects' },
+        () => {
+          loadProjectsData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_members' },
+        () => {
+          loadProjectsData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (selectedProject && activeTab === 'files') {
@@ -303,19 +328,33 @@ export const Projects: React.FC = () => {
           .single();
 
         if (!projErr && projData) {
-          const membersToInsert = Array.from(new Set([user.id, ...selectedMemberIds])).map((uid) => ({
-            project_id: projData.id,
-            user_id: uid,
-            role: uid === user.id ? 'Manager' : 'Member',
-          }));
+          const allSelectedIds = Array.from(new Set([user.id, ...selectedMemberIds]));
 
-          await supabase.from('project_members').insert(membersToInsert);
+          // Try RPC first for guaranteed SECURITY DEFINER execution
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('set_project_members', {
+            p_project_id: projData.id,
+            p_user_ids: allSelectedIds,
+          });
+
+          if (rpcErr || !rpcRes?.success) {
+            const membersToInsert = allSelectedIds.map((uid) => ({
+              project_id: projData.id,
+              user_id: uid,
+              role: uid === user.id ? 'Manager' : 'Member',
+            }));
+            await supabase.from('project_members').upsert(membersToInsert, { onConflict: 'project_id, user_id' });
+          }
 
           setProjectsList((prev) => [projData as Project, ...prev]);
           setMyProjectMemberIds((prev) => [...prev, projData.id]);
+          await loadProjectsData();
+        } else if (projErr) {
+          console.error('Error creating project:', projErr);
+          setToastMsg(`Failed to create project: ${projErr.message}`);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error creating project:', err);
+        setToastMsg(`Error: ${err?.message || 'Could not create project'}`);
       }
     } else {
       const newProj: Project = {
@@ -345,12 +384,12 @@ export const Projects: React.FC = () => {
 
     if (isSupabaseConfigured) {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('project_members')
           .select('user_id')
           .eq('project_id', proj.id);
 
-        if (data) {
+        if (!error && data) {
           setCurrentProjectMemberIds(data.map((d) => d.user_id));
         }
       } catch (err) {
@@ -368,22 +407,42 @@ export const Projects: React.FC = () => {
 
     setIsSavingMembers(true);
     try {
-      await supabase.from('project_members').delete().eq('project_id', editingProject.id);
+      const allMemberIds = Array.from(
+        new Set(
+          [editingProject.created_by, ...currentProjectMemberIds].filter(
+            (id): id is string => typeof id === 'string' && id.length > 0
+          )
+        )
+      );
 
-      const newMembers = currentProjectMemberIds.map((uid) => ({
-        project_id: editingProject.id,
-        user_id: uid,
-        role: uid === editingProject.created_by ? 'Manager' : 'Member',
-      }));
+      // Try RPC first for consistency
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('set_project_members', {
+        p_project_id: editingProject.id,
+        p_user_ids: allMemberIds,
+      });
 
-      if (newMembers.length > 0) {
-        await supabase.from('project_members').insert(newMembers);
+      if (rpcErr || !rpcRes?.success) {
+        await supabase.from('project_members').delete().eq('project_id', editingProject.id);
+
+        const newMembers = allMemberIds.map((uid) => ({
+          project_id: editingProject.id,
+          user_id: uid,
+          role: uid === editingProject.created_by ? 'Manager' : 'Member',
+        }));
+
+        if (newMembers.length > 0) {
+          await supabase.from('project_members').upsert(newMembers, { onConflict: 'project_id, user_id' });
+        }
       }
 
-      setToastMsg(`Updated access permissions for "${editingProject.name}". ${currentProjectMemberIds.length} members assigned.`);
+      await loadProjectsData();
+
+      setToastMsg(`Updated access permissions for "${editingProject.name}". ${allMemberIds.length} members assigned.`);
       setTimeout(() => setToastMsg(''), 4000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving project members:', err);
+      setToastMsg(`Failed: ${err?.message || 'Error updating members'}`);
+      setTimeout(() => setToastMsg(''), 4000);
     }
 
     setIsSavingMembers(false);

@@ -1,15 +1,15 @@
 -- =============================================================================
 -- Migration: 20260821000000_clear_tasks_and_collision_proof_ids.sql
--- 1. Wipe all existing tasks
+-- 1. Wipe all existing tasks from the database
 -- 2. Restart atomic sequence for task codes from 1001
--- 3. Enforce bulletproof atomic trigger for code generation
+-- 3. Self-healing collision-proof trigger for code generation (cannot conflict ever)
 -- 4. Provide SECURITY DEFINER RPC to clear tasks whenever needed by Admins
 -- =============================================================================
 
--- 1. Delete all existing tasks (and dependent data if any)
+-- 1. Delete all existing tasks
 DELETE FROM public.tasks;
 
--- 2. Re-create / Restart the task code sequence safely
+-- 2. Create or restart sequence
 CREATE SEQUENCE IF NOT EXISTS public.task_code_seq
   START 1001
   INCREMENT 1
@@ -19,15 +19,23 @@ CREATE SEQUENCE IF NOT EXISTS public.task_code_seq
 
 ALTER SEQUENCE public.task_code_seq RESTART WITH 1001;
 
--- 3. Collision-Proof Trigger Function
--- Automatically assigns TSK-1001, TSK-1002, ... using the atomic sequence
+-- 3. Self-Healing Collision-Proof Trigger Function
+-- Generates sequential code and verifies non-existence in a loop so collisions are impossible
 CREATE OR REPLACE FUNCTION public.assign_task_code()
 RETURNS TRIGGER AS $$
+DECLARE
+  candidate_code TEXT;
+  code_exists BOOLEAN;
 BEGIN
-  -- Always assign next sequence value to guarantee atomic uniqueness and eliminate collisions
-  NEW.code := 'TSK-' || LPAD(nextval('public.task_code_seq')::text, 4, '0');
+  LOOP
+    candidate_code := 'TSK-' || LPAD(nextval('public.task_code_seq')::text, 4, '0');
+    SELECT EXISTS(SELECT 1 FROM public.tasks WHERE code = candidate_code) INTO code_exists;
+    IF NOT code_exists THEN
+      NEW.code := candidate_code;
+      EXIT;
+    END IF;
+  END LOOP;
   
-  -- If client did not provide an ID or provided a non-UUID fallback, ensure UUID is assigned
   IF NEW.id IS NULL THEN
     NEW.id := gen_random_uuid();
   END IF;
